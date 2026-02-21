@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Hive Relay Pro 6 Screen</title>
+
+<script src="https://unpkg.com/tmi.js@1.8.5/dist/tmi.min.js"></script>
+
+<style>
+
+body{
+    background:#0e0e10;
+    color:white;
+    font-family:Arial;
+    padding:15px;
+}
+
+.topbar{
+    margin-bottom:15px;
+}
+
+.grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(420px,1fr));
+    gap:15px;
+}
+
+.slot{
+    background:#18181b;
+    padding:10px;
+    border-radius:10px;
+}
+
+iframe{
+    width:100%;
+    aspect-ratio:16 / 9;
+    border:none;
+}
+
+input{
+    padding:8px;
+    background:#0e0e10;
+    border:1px solid #444;
+    color:white;
+}
+
+button{
+    padding:8px 14px;
+    background:#9147ff;
+    border:none;
+    color:white;
+    cursor:pointer;
+    margin:3px;
+}
+
+.relayBox{
+    margin-top:15px;
+    background:#18181b;
+    padding:10px;
+    border-radius:8px;
+}
+
+</style>
+</head>
+
+<body>
+
+<h2>Hive Relay Pro Viewer</h2>
+
+<div class="topbar">
+
+<button id="login1">Login Client 1</button>
+<button id="login2">Login Client 2</button>
+<button id="login3">Login Client 3</button>
+
+<button id="loadBtn">Load Streams</button>
+
+</div>
+
+<h3>Channel Browser</h3>
+
+<input id="searchBox" placeholder="Search Twitch Channel">
+<button id="addBrowser">Add To Next Slot</button>
+
+<div id="inputs"></div>
+
+<div id="streams" class="grid"></div>
+
+<div class="relayBox">
+
+<h3>Relay Chat</h3>
+
+<input id="relayText" placeholder="Relay message">
+<input id="chatMsg" placeholder="Chat send box">
+
+<br>
+
+<button id="relaySendBtn">Relay + Send</button>
+
+</div>
+
+<script>
+(() => {
+
+/* CLIENT IDS */
+const CLIENTS=[
+"cvv666bkohm1zuauw2f5nqcwvi1hx8",
+"8etzpqt1zgsldyz25h7t3f23r4qng8",
+"6qlrlu03by71dxa52tb5aqf9nodq1o"
+];
+
+const REDIRECT="https://lilalien45.github.io/hive-relay-pro/";
+
+/* STATE */
+let tokens=[null,null,null];
+let slotChannels=new Array(6).fill("");
+let nextSlot=0;
+
+/* CREATE INPUTS */
+const inputContainer=document.getElementById("inputs");
+
+for(let i=0;i<6;i++){
+    inputContainer.innerHTML+=`
+    <div>
+    Slot ${i+1}
+    <input id="channel${i}" placeholder="Twitch channel">
+    </div>
+    `;
+}
+
+/* LOGIN */
+document.getElementById("login1").onclick=()=>loginClient(0);
+document.getElementById("login2").onclick=()=>loginClient(1);
+document.getElementById("login3").onclick=()=>loginClient(2);
+
+function loginClient(index){
+
+    const url=
+    "https://id.twitch.tv/oauth2/authorize"+
+    "?response_type=token"+
+    "&client_id="+CLIENTS[index]+
+    "&redirect_uri="+encodeURIComponent(REDIRECT)+
+    "&scope="+encodeURIComponent("chat:read chat:edit user:read:follows")+
+    "&state="+index+
+    "&force_verify=true";
+
+    window.location.href=url;
+}
+
+/* AUTH CHECK */
+function checkAuth(){
+
+    const params=new URLSearchParams(location.hash.substring(1));
+
+    const token=params.get("access_token");
+    const state=params.get("state");
+
+    if(token && state!==null){
+        tokens[state]=token;
+        window.location.hash="";
+    }
+}
+
+/* LOAD STREAMS */
+document.getElementById("loadBtn").onclick=()=>{
+
+    const container=document.getElementById("streams");
+    container.innerHTML="";
+
+    for(let i=0;i<6;i++){
+
+        const channel=document.getElementById("channel"+i).value.trim();
+        if(!channel) continue;
+
+        slotChannels[i]=channel;
+
+        container.innerHTML+=`
+        <div class="slot">
+
+        <iframe
+        src="https://player.twitch.tv/?channel=${channel}&parent=${location.hostname}"
+        allowfullscreen>
+        </iframe>
+
+        <iframe
+        src="https://www.twitch.tv/embed/${channel}/chat?parent=${location.hostname}">
+        </iframe>
+
+        </div>
+        `;
+    }
+};
+
+/* CHANNEL BROWSER */
+document.getElementById("addBrowser").onclick=()=>{
+
+    const val=document.getElementById("searchBox").value.trim();
+    if(!val) return;
+
+    if(nextSlot>=6) nextSlot=0;
+
+    document.getElementById("channel"+nextSlot).value=val;
+    nextSlot++;
+};
+
+/* RELAY + AUTO SEND */
+document.getElementById("relaySendBtn").onclick=()=>{
+
+    const relayText=document.getElementById("relayText").value;
+    const chatText=document.getElementById("chatMsg").value;
+
+    if(relayText){
+        document.getElementById("chatMsg").value=relayText;
+    }
+
+    const sendButton=document.getElementById("chatSendHidden");
+    if(sendButton){
+        sendButton.click();
+    }
+
+    document.getElementById("relayText").value="";
+};
+
+checkAuth();
+
+})();
+</script>
+
+</body>
+                                    </html>
