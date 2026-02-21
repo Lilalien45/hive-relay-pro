@@ -297,9 +297,10 @@ document.getElementById("mass-input").onkeydown=e=>{
 
 /* ---------- START ---------- */
 
+    /* visit the website */
 checkAuth();
 
 </script>
-
 </body>
 </html>
+
