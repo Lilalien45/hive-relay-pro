@@ -99,7 +99,7 @@ button:hover{
 
 const CONFIG={
     clientId:"cvv666bkohm1zuauw2f5nqcwvi1hx8",
-    redirectUri:"http://127.0.0.1:19132"
+    redirectUri:"https://lilalien45.github.io/hive-relay-pro"
 };
 
 let accessToken=null;
