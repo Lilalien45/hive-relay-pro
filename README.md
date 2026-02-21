@@ -1,468 +1,276 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Hive Relay Pro</title>
+<title>Twitch Hive Relay</title>
+
 <script src="https://unpkg.com/tmi.js@1.8.5/dist/tmi.min.js"></script>
 
 <style>
 body{
     background:#0e0e10;
     color:#efeff1;
-    font-family:Inter,sans-serif;
+    font-family:Arial,sans-serif;
     margin:0;
-    height:100vh;
     display:flex;
     flex-direction:column;
+    height:100vh;
 }
-#header{
-    padding:12px;
-    background:#18181b;
-    border-bottom:2px solid #303032;
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    flex-wrap:wrap;
-    gap:8px;
-}
-#controls{display:flex;gap:8px;flex-wrap:wrap}
-#content{flex:1;display:flex}
-#stream{flex:2}
-#chat{
-    flex:1;
-    background:#0e0e10;
-    border-left:2px solid #303032;
-    overflow-y:auto;
-    padding:10px;
-    font-size:13px;
-}
-#input-area{
+
+#topbar{
     padding:12px;
     background:#18181b;
     display:flex;
     gap:10px;
+    flex-wrap:wrap;
 }
-input{
-    padding:8px;
-    background:#0e0e10;
-    border:1px solid #464649;
-    color:white;
-}
+
 button{
-    padding:8px 12px;
+    padding:8px 14px;
     background:#9147ff;
     border:none;
     color:white;
     font-weight:bold;
     cursor:pointer;
-    border-radius:4px;
 }
-.msg{margin-bottom:6px}
-.chan{color:#bf94ff;margin-right:6px}
-#error{
-    background:#400;
+
+button.off{
+    background:#444;
+}
+
+#stream-area{
+    height:300px;
+    background:black;
+}
+
+#chat-log{
+    flex:1;
+    overflow-y:auto;
+    padding:15px;
+    font-size:13px;
+}
+
+#input-area{
+    display:flex;
+    gap:10px;
+    padding:10px;
+    background:#18181b;
+}
+
+input{
+    flex:1;
+    padding:10px;
+    background:#0e0e10;
+    border:1px solid #444;
     color:white;
-    padding:6px;
-    display:none;
 }
 </style>
 </head>
 
 <body>
 
-<div id="header">
-<div id="status">🔴 Not Logged In</div>
-<div id="controls">
-<button id="login-btn">Login</button>
-<button onclick="logout()">Logout</button>
-<button onclick="autoJoin()">Auto Join Followed</button>
-<button onclick="enableChat()">Enable Chat</button>
-<button onclick="refreshStreams()">Refresh</button>
-</div>
+<div id="topbar">
+<button id="loginBtn">Login</button>
+<button id="chatToggle" class="off">Chat OFF</button>
+<button id="viewToggle" class="off">View OFF</button>
+<button id="autoJoinToggle" class="off">Auto Join OFF</button>
+<span id="status">🔴 Not Logged In</span>
 </div>
 
-<div id="error"></div>
+<div id="stream-area"></div>
 
-<div id="content">
-<div id="stream">
-<iframe id="player" width="100%" height="100%" frameborder="0" allowfullscreen></iframe>
-</div>
-<div id="chat">Chat disabled.</div>
-</div>
+<div id="chat-log">Chat disabled.</div>
 
 <div id="input-area">
-<input id="vod-input" placeholder="Enter VOD ID">
-<button onclick="loadVODFromInput()">Load VOD</button>
-<input id="mass-input" placeholder="Relay message">
-<button onclick="broadcast()">SEND</button>
+<input id="messageInput" placeholder="Send message">
+<button onclick="sendMessage()">SEND</button>
 </div>
 
 <script>
 
-/* CONFIG */
-
 const CONFIG={
-clientId:"cvv666bkohm1zuauw2f5nqcwvi1hx8",
-redirect:"https://lilalien45.github.io/hive-relay-pro/",
-parent:"lilalien45.github.io"
+    clientId:"cvv666bkohm1zuauw2f5nqcwvi1hx8",
+    redirectUri:"http://127.0.0.1:19132/another%20twitch.html"
 };
 
 let accessToken=null;
 let twitchClient=null;
 let channels=[];
-let username=null;
+let chatEnabled=false;
+let autoJoin=false;
+let viewEnabled=false;
+
+/* COOKIE */
+function saveToken(token){
+    document.cookie="twitch_token="+token+"; path=/; max-age=31536000";
+}
+function getToken(){
+    const c=document.cookie.split("; ");
+    for(const x of c){
+        if(x.startsWith("twitch_token=")) return x.split("=")[1];
+    }
+    return null;
+}
 
 /* LOGIN */
+document.getElementById("loginBtn").onclick=()=>{
+    const url=
+    "https://id.twitch.tv/oauth2/authorize"+
+    "?response_type=token"+
+    "&client_id="+CONFIG.clientId+
+    "&redirect_uri="+encodeURIComponent(CONFIG.redirectUri)+
+    "&scope="+encodeURIComponent("chat:read chat:edit user:read:follows")+
+    "&force_verify=true";
 
-document.getElementById("login-btn").onclick=()=>{
-
-const authUrl=
-"https://id.twitch.tv/oauth2/authorize"+
-"?response_type=token"+
-"&client_id="+CONFIG.clientId+
-"&redirect_uri="+encodeURIComponent(CONFIG.redirect)+
-"&scope="+encodeURIComponent(
-"chat:read chat:edit user:read:follows"
-)+
-"&force_verify=true";
-
-window.location.href=authUrl;
+    window.location.href=url;
 };
 
-/* AUTH */
-
+/* AUTH CHECK */
 function checkAuth(){
-const params=new URLSearchParams(location.hash.substring(1));
-const token=params.get("access_token");
+    const hash=new URLSearchParams(location.hash.substring(1));
+    let token=hash.get("access_token") || getToken();
 
-if(token){
-localStorage.setItem("twitch_token",token);
-window.location.hash="";
+    if(token){
+        accessToken=token;
+        saveToken(token);
+        window.location.hash="";
+        document.getElementById("status").innerText="🟢 Logged In";
+    }
 }
 
-accessToken=localStorage.getItem("twitch_token");
+/* CHAT TOGGLE */
+document.getElementById("chatToggle").onclick=()=>{
+    chatEnabled=!chatEnabled;
+    const btn=document.getElementById("chatToggle");
 
-if(accessToken){
-document.getElementById("status").innerText="🟢 Logged In";
-}
-}
-
-checkAuth();
-
-/* STREAM FUNCTIONS */
-
-function loadStream(channel){
-document.getElementById("player").src =
-`https://player.twitch.tv/?channel=${channel}&parent=${CONFIG.parent}`;
-}
-
-function loadVOD(videoId){
-document.getElementById("player").src =
-`https://player.twitch.tv/?video=${videoId}&parent=${CONFIG.parent}`;
-}
-
-function loadVODFromInput(){
-const id=document.getElementById("vod-input").value;
-if(id) loadVOD(id);
-}
-
-/* AUTO JOIN FOLLOWED */
-
-async function autoJoin(){
-
-if(!accessToken){
-showError("Login required.");
-return;
-}
-
-try{
-
-const userRes=await fetch(
-"https://api.twitch.tv/helix/users",
-{
-headers:{
-"Client-ID":CONFIG.clientId,
-"Authorization":"Bearer "+accessToken
-}
-}
-);
-
-const userData=await userRes.json();
-username=userData.data[0].login;
-
-const followRes=await fetch(
-"https://api.twitch.tv/helix/streams/followed?first=20",
-{
-headers:{
-"Client-ID":CONFIG.clientId,
-"Authorization":"Bearer "+accessToken
-}
-}
-);
-
-const followData=await followRes.json();
-
-if(!followData.data.length){
-showError("No live followed streams.");
-return;
-}
-
-channels=followData.data.map(x=>x.user_login);
-loadStream(channels[0]);
-
-}catch(err){
-showError(err.message);
-}
-
-}
-
-/* ENABLE CHAT */
-
-async function enableChat(){
-
-if(!channels.length){
-showError("Join channels first.");
-return;
-}
-
-twitchClient=new tmi.Client({
-connection:{secure:true,reconnect:true},
-identity:{
-username:username,
-password:"oauth:"+accessToken
-},
-channels:channels
-});
-
-await twitchClient.connect();
-
-twitchClient.on("message",(channel,tags,msg)=>{
-const chat=document.getElementById("chat");
-const div=document.createElement("div");
-div.className="msg";
-div.innerHTML=
-`<span class="chan">[${channel}]</span>
-<b>${tags["display-name"]}</b>: ${msg}`;
-chat.appendChild(div);
-chat.scrollTop=chat.scrollHeight;
-});
-
-document.getElementById("chat").innerText="";
-}
-
-/* REFRESH */
-
-function refreshStreams(){
-autoJoin();
-}
-
-/* BROADCAST */
-
-function broadcast(){
-
-if(!twitchClient) return;
-
-const text=document.getElementById("mass-input").value;
-if(!text) return;
-
-channels.forEach((chan,i)=>{
-setTimeout(()=>{
-twitchClient.say(chan,text);
-},i*600);
-});
-
-document.getElementById("mass-input").value="";
-}
-
-/* LOGOUT */
-
-function logout(){
-localStorage.removeItem("twitch_token");
-location.reload();
-}
-
-/* ERROR */
-
-function showError(msg){
-const el=document.getElementById("error");
-el.style.display="block";
-el.innerText=msg;
-}
-
-</script>
-
-</body>
-</html>let channels=[];
-let username=null;
-
-/* ================= LOGIN ================= */
-
-document.getElementById("login-btn").onclick=()=>{
-
-const authUrl=
-"https://id.twitch.tv/oauth2/authorize"+
-"?response_type=token"+
-"&client_id="+CONFIG.clientId+
-"&redirect_uri="+encodeURIComponent(CONFIG.redirect)+
-"&scope="+encodeURIComponent(
-"chat:read chat:edit user:read:follows"
-)+
-"&force_verify=true";
-
-window.location.href=authUrl;
+    if(chatEnabled){
+        btn.classList.remove("off");
+        btn.innerText="Chat ON";
+        initChat();
+    }else{
+        btn.classList.add("off");
+        btn.innerText="Chat OFF";
+        if(twitchClient) twitchClient.disconnect();
+        document.getElementById("chat-log").innerHTML="Chat disabled.";
+    }
 };
 
-/* ================= AUTH ================= */
+/* VIEW TOGGLE */
+document.getElementById("viewToggle").onclick=()=>{
+    viewEnabled=!viewEnabled;
+    const btn=document.getElementById("viewToggle");
 
-function checkAuth(){
+    if(viewEnabled){
+        btn.classList.remove("off");
+        btn.innerText="View ON";
+        if(channels.length>0){
+            loadStreamEmbed(channels[0]);
+        }
+    }else{
+        btn.classList.add("off");
+        btn.innerText="View OFF";
+        document.getElementById("stream-area").innerHTML="";
+    }
+};
 
-const params=new URLSearchParams(location.hash.substring(1));
-const token=params.get("access_token");
+/* AUTO JOIN */
+document.getElementById("autoJoinToggle").onclick=()=>{
+    autoJoin=!autoJoin;
+    const btn=document.getElementById("autoJoinToggle");
 
-if(token){
-localStorage.setItem("twitch_token",token);
-window.location.hash="";
+    if(autoJoin){
+        btn.classList.remove("off");
+        btn.innerText="Auto Join ON";
+    }else{
+        btn.classList.add("off");
+        btn.innerText="Auto Join OFF";
+    }
+};
+
+/* INIT CHAT */
+async function initChat(){
+
+    if(!accessToken){
+        alert("Login first.");
+        return;
+    }
+
+    const userRes=await fetch("https://api.twitch.tv/helix/users",{
+        headers:{
+            "Client-ID":CONFIG.clientId,
+            "Authorization":"Bearer "+accessToken
+        }
+    });
+
+    const userData=await userRes.json();
+    const username=userData.data[0].login;
+
+    if(autoJoin){
+        const followRes=await fetch(
+            "https://api.twitch.tv/helix/streams/followed?first=10",
+            {
+                headers:{
+                    "Client-ID":CONFIG.clientId,
+                    "Authorization":"Bearer "+accessToken
+                }
+            }
+        );
+        const followData=await followRes.json();
+        channels=followData.data.map(x=>x.user_login);
+    }else{
+        channels=[username];
+    }
+
+    twitchClient=new tmi.Client({
+        connection:{secure:true,reconnect:true},
+        identity:{
+            username:username,
+            password:"oauth:"+accessToken
+        },
+        channels:channels
+    });
+
+    await twitchClient.connect();
+
+    twitchClient.on("message",(channel,tags,msg)=>{
+        const log=document.getElementById("chat-log");
+        const div=document.createElement("div");
+        div.innerHTML="<b>["+channel+"] "+tags["display-name"]+":</b> "+msg;
+        log.appendChild(div);
+        log.scrollTop=log.scrollHeight;
+    });
+
+    if(viewEnabled){
+        loadStreamEmbed(channels[0]);
+    }
 }
 
-accessToken=localStorage.getItem("twitch_token");
-
-if(accessToken){
-document.getElementById("status").innerText="🟢 Logged In";
-initRelay();
+/* STREAM EMBED */
+function loadStreamEmbed(channel){
+    document.getElementById("stream-area").innerHTML=
+    `<iframe
+        src="https://player.twitch.tv/?channel=${channel}&parent=127.0.0.1"
+        height="100%"
+        width="100%"
+        frameborder="0"
+        allowfullscreen>
+     </iframe>`;
 }
 
+/* SEND */
+function sendMessage(){
+    const input=document.getElementById("messageInput");
+    if(!input.value || !twitchClient) return;
+
+    channels.forEach(c=>{
+        twitchClient.say(c,input.value);
+    });
+
+    input.value="";
 }
 
-/* ================= STREAM LOADERS ================= */
-
-function loadStream(channel){
-document.getElementById("player").src =
-`https://player.twitch.tv/?channel=${channel}&parent=${CONFIG.parent}`;
-}
-
-function loadVOD(videoId){
-document.getElementById("player").src =
-`https://player.twitch.tv/?video=${videoId}&parent=${CONFIG.parent}`;
-}
-
-/* ================= INIT SYSTEM ================= */
-
-async function initRelay(){
-
-try{
-
-if(!accessToken){
-showError("Login expired.");
-return;
-}
-
-/* Get user */
-const userRes=await fetch(
-"https://api.twitch.tv/helix/users",
-{
-headers:{
-"Client-ID":CONFIG.clientId,
-"Authorization":"Bearer "+accessToken
-}
-}
-);
-
-const userData=await userRes.json();
-
-if(!userData.data || !userData.data.length){
-showError("Invalid token.");
-return;
-}
-
-username=userData.data[0].login;
-
-/* Get followed live streams */
-const followRes=await fetch(
-"https://api.twitch.tv/helix/streams/followed?first=20",
-{
-headers:{
-"Client-ID":CONFIG.clientId,
-"Authorization":"Bearer "+accessToken
-}
-}
-);
-
-const followData=await followRes.json();
-
-if(!followData.data || followData.data.length===0){
-document.getElementById("chat").innerText="No followed streams live.";
-return;
-}
-
-/* Load first live stream */
-loadStream(followData.data[0].user_login);
-
-/* Collect channels */
-channels=followData.data.map(x=>x.user_login);
-
-/* Connect chat */
-twitchClient=new tmi.Client({
-options:{debug:false},
-connection:{secure:true,reconnect:true},
-identity:{
-username:username,
-password:"oauth:"+accessToken
-},
-channels:channels
-});
-
-await twitchClient.connect();
-
-twitchClient.on("message",(channel,tags,msg)=>{
-const chat=document.getElementById("chat");
-const div=document.createElement("div");
-div.className="msg";
-div.innerHTML=
-`<span class="chan">[${channel}]</span>
-<b>${tags["display-name"]}</b>: ${msg}`;
-chat.appendChild(div);
-chat.scrollTop=chat.scrollHeight;
-});
-
-}catch(err){
-showError("Init failed: "+err.message);
-}
-
-}
-
-/* ================= BROADCAST ================= */
-
-function broadcast(){
-
-if(!twitchClient) return;
-
-const text=document.getElementById("mass-input").value;
-if(!text) return;
-
-channels.forEach((chan,i)=>{
-setTimeout(()=>{
-twitchClient.say(chan,text);
-},i*600);
-});
-
-document.getElementById("mass-input").value="";
-}
-
-/* ================= ERROR ================= */
-
-function showError(msg){
-const el=document.getElementById("error");
-el.style.display="block";
-el.innerText=msg;
-}
-
-/* ================= LOGOUT ================= */
-
-function logout(){
-localStorage.removeItem("twitch_token");
-location.reload();
-}
-
-/* ================= START ================= */
+document.getElementById("messageInput").onkeydown=e=>{
+    if(e.key==="Enter") sendMessage();
+};
 
 checkAuth();
 
