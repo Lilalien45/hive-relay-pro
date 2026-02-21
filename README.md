@@ -2,7 +2,6 @@
 <html>
 <head>
 <title>Hive Relay Pro</title>
-
 <script src="https://unpkg.com/tmi.js@1.8.5/dist/tmi.min.js"></script>
 
 <style>
@@ -15,7 +14,6 @@ body{
     display:flex;
     flex-direction:column;
 }
-
 #header{
     padding:15px;
     background:#18181b;
@@ -24,31 +22,23 @@ body{
     justify-content:space-between;
     align-items:center;
 }
-
-#content{
-    display:flex;
-    flex:1;
-}
-
-#stream{
-    flex:2;
-}
-
+#controls{display:flex;gap:10px}
+#content{flex:1;display:flex}
+#stream{flex:2}
 #chat{
     flex:1;
     background:#0e0e10;
     border-left:2px solid #303032;
     overflow-y:auto;
     padding:10px;
+    font-size:13px;
 }
-
 #input-area{
     padding:15px;
     background:#18181b;
     display:flex;
     gap:10px;
 }
-
 input{
     flex:1;
     padding:12px;
@@ -56,9 +46,8 @@ input{
     border:1px solid #464649;
     color:white;
 }
-
 button{
-    padding:12px 18px;
+    padding:10px 16px;
     background:#9147ff;
     border:none;
     color:white;
@@ -66,14 +55,14 @@ button{
     cursor:pointer;
     border-radius:4px;
 }
-
-.msg{
-    margin-bottom:6px;
-    font-size:13px;
-}
-.chan{
-    color:#bf94ff;
-    margin-right:6px;
+.msg{margin-bottom:6px}
+.chan{color:#bf94ff;margin-right:6px}
+#error{
+    background:#300;
+    color:#fff;
+    padding:6px;
+    font-size:12px;
+    display:none;
 }
 </style>
 </head>
@@ -82,23 +71,24 @@ button{
 
 <div id="header">
 <div id="status">🔴 Not Logged In</div>
+<div id="controls">
 <button id="login-btn">Login Twitch</button>
+<button onclick="logout()">Logout</button>
 </div>
+</div>
+
+<div id="error"></div>
 
 <div id="content">
 <div id="stream">
-<iframe
-id="player"
+<iframe id="player"
 width="100%"
 height="100%"
 frameborder="0"
 allowfullscreen>
 </iframe>
 </div>
-
-<div id="chat">
-Chat loading...
-</div>
+<div id="chat">Chat loading...</div>
 </div>
 
 <div id="input-area">
@@ -108,18 +98,20 @@ Chat loading...
 
 <script>
 
-/* ---------- CONFIG ---------- */
+/* ================= CONFIG ================= */
 
 const CONFIG={
-    clientId:"cvv666bkohm1zuauw2f5nqcwvi1hx8",
-    redirect:"https://lilalien45.github.io/hive-relay-pro/"
+clientId:"cvv666bkohm1zuauw2f5nqcwvi1hx8",
+redirect:"https://lilalien45.github.io/hive-relay-pro/",
+parent:"lilalien45.github.io"
 };
 
 let accessToken=null;
 let twitchClient=null;
 let channels=[];
+let username=null;
 
-/* ---------- LOGIN ---------- */
+/* ================= LOGIN ================= */
 
 document.getElementById("login-btn").onclick=()=>{
 
@@ -134,39 +126,53 @@ const authUrl=
 "&force_verify=true";
 
 window.location.href=authUrl;
-
 };
 
-/* ---------- AUTH CHECK ---------- */
+/* ================= AUTH ================= */
 
 function checkAuth(){
 
-const params=new URLSearchParams(
-location.hash.substring(1)
-);
+const params=new URLSearchParams(location.hash.substring(1));
+const token=params.get("access_token");
 
-accessToken=params.get("access_token") ||
-localStorage.getItem("twitch_token");
+if(token){
+localStorage.setItem("twitch_token",token);
+window.location.hash="";
+}
+
+accessToken=localStorage.getItem("twitch_token");
 
 if(accessToken){
-
-localStorage.setItem("twitch_token",accessToken);
-
-document.getElementById("status").innerText=
-"🟢 Logged In";
-
+document.getElementById("status").innerText="🟢 Logged In";
 initRelay();
-
 }
 
 }
 
-/* ---------- RELAY + CHAT ---------- */
+/* ================= STREAM LOADERS ================= */
+
+function loadStream(channel){
+document.getElementById("player").src =
+`https://player.twitch.tv/?channel=${channel}&parent=${CONFIG.parent}`;
+}
+
+function loadVOD(videoId){
+document.getElementById("player").src =
+`https://player.twitch.tv/?video=${videoId}&parent=${CONFIG.parent}`;
+}
+
+/* ================= INIT SYSTEM ================= */
 
 async function initRelay(){
 
 try{
 
+if(!accessToken){
+showError("Login expired.");
+return;
+}
+
+/* Get user */
 const userRes=await fetch(
 "https://api.twitch.tv/helix/users",
 {
@@ -178,11 +184,17 @@ headers:{
 );
 
 const userData=await userRes.json();
-const username=userData.data[0].login;
 
-/* Followed streams */
+if(!userData.data || !userData.data.length){
+showError("Invalid token.");
+return;
+}
+
+username=userData.data[0].login;
+
+/* Get followed live streams */
 const followRes=await fetch(
-"https://api.twitch.tv/helix/streams/followed?first=10",
+"https://api.twitch.tv/helix/streams/followed?first=20",
 {
 headers:{
 "Client-ID":CONFIG.clientId,
@@ -193,18 +205,21 @@ headers:{
 
 const followData=await followRes.json();
 
-if(followData.data.length>0){
+if(!followData.data || followData.data.length===0){
+document.getElementById("chat").innerText="No followed streams live.";
+return;
+}
 
-let streamUser=followData.data[0].user_login;
+/* Load first live stream */
+loadStream(followData.data[0].user_login);
 
-/* Stream embed */
-document.getElementById("player").src=
-`https://player.twitch.tv/?channel=${streamUser}&parent=${location.hostname}`;
-
-/* Chat connect */
+/* Collect channels */
 channels=followData.data.map(x=>x.user_login);
 
+/* Connect chat */
 twitchClient=new tmi.Client({
+options:{debug:false},
+connection:{secure:true,reconnect:true},
 identity:{
 username:username,
 password:"oauth:"+accessToken
@@ -215,36 +230,30 @@ channels:channels
 await twitchClient.connect();
 
 twitchClient.on("message",(channel,tags,msg)=>{
-
 const chat=document.getElementById("chat");
-
 const div=document.createElement("div");
 div.className="msg";
-
 div.innerHTML=
 `<span class="chan">[${channel}]</span>
 <b>${tags["display-name"]}</b>: ${msg}`;
-
 chat.appendChild(div);
 chat.scrollTop=chat.scrollHeight;
-
 });
 
-}
-
 }catch(err){
-console.error(err);
+showError("Init failed: "+err.message);
 }
 
 }
 
-/* ---------- RELAY SEND ---------- */
+/* ================= BROADCAST ================= */
 
 function broadcast(){
 
-const text=document.getElementById("mass-input").value;
+if(!twitchClient) return;
 
-if(!text || !twitchClient) return;
+const text=document.getElementById("mass-input").value;
+if(!text) return;
 
 channels.forEach((chan,i)=>{
 setTimeout(()=>{
@@ -253,10 +262,24 @@ twitchClient.say(chan,text);
 });
 
 document.getElementById("mass-input").value="";
-
 }
 
-/* ---------- START ---------- */
+/* ================= ERROR ================= */
+
+function showError(msg){
+const el=document.getElementById("error");
+el.style.display="block";
+el.innerText=msg;
+}
+
+/* ================= LOGOUT ================= */
+
+function logout(){
+localStorage.removeItem("twitch_token");
+location.reload();
+}
+
+/* ================= START ================= */
 
 checkAuth();
 
