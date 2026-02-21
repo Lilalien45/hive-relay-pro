@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Twitch Hive Relay</title>
-
+<title>Hive Relay Separate Apps</title>
 <script src="https://unpkg.com/tmi.js@1.8.5/dist/tmi.min.js"></script>
 
 <style>
@@ -11,109 +10,255 @@ body{
     color:#efeff1;
     font-family:Arial,sans-serif;
     margin:0;
-    display:flex;
-    flex-direction:column;
-    height:100vh;
+    padding:20px;
 }
-
-#topbar{
-    padding:12px;
-    background:#18181b;
-    display:flex;
-    gap:10px;
-    flex-wrap:wrap;
+.app{
+    border:1px solid #333;
+    padding:15px;
+    margin-bottom:20px;
 }
-
 button{
-    padding:8px 14px;
+    padding:6px 10px;
+    margin:4px 4px 4px 0;
     background:#9147ff;
     border:none;
     color:white;
-    font-weight:bold;
     cursor:pointer;
 }
+button.off{ background:#444; }
 
-button.off{
-    background:#444;
-}
-
-#stream-area{
-    height:300px;
+.stream{
+    height:200px;
     background:black;
+    margin-top:10px;
 }
 
-#chat-log{
-    flex:1;
+.chat{
+    height:150px;
     overflow-y:auto;
-    padding:15px;
-    font-size:13px;
+    background:#111;
+    padding:8px;
+    font-size:12px;
+    margin-top:10px;
 }
-
-#input-area{
-    display:flex;
-    gap:10px;
-    padding:10px;
-    background:#18181b;
-}
-
 input{
-    flex:1;
-    padding:10px;
+    padding:6px;
     background:#0e0e10;
     border:1px solid #444;
     color:white;
 }
 </style>
 </head>
-
 <body>
 
-<div id="topbar">
-<button id="loginBtn">Login</button>
-<button id="chatToggle" class="off">Chat OFF</button>
-<button id="viewToggle" class="off">View OFF</button>
-<button id="autoJoinToggle" class="off">Auto Join OFF</button>
-<span id="status">🔴 Not Logged In</span>
-</div>
+<h2>Hive Relay – Separate Apps</h2>
 
-<div id="stream-area"></div>
-
-<div id="chat-log">Chat disabled.</div>
-
-<div id="input-area">
-<input id="messageInput" placeholder="Send message">
-<button onclick="sendMessage()">SEND</button>
-</div>
+<div id="apps"></div>
 
 <script>
 
-const CONFIG={
-    clientId:"cvv666bkohm1zuauw2f5nqcwvi1hx8",
-    redirectUri:"http://127.0.0.1:19132/another%20twitch.html"
-};
+const CLIENT_IDS=[
+"cvv666bkohm1zuauw2f5nqcwvi1hx8",
+"8etzpqt1zgsldyz25h7t3f23r4qng8",
+"4r4n0hx6o7ff9ho3tdiaambnx2lw56"
+];
 
-let accessToken=null;
-let twitchClient=null;
-let channels=[];
-let chatEnabled=false;
-let autoJoin=false;
-let viewEnabled=false;
+const REDIRECT="https://lilalien45.github.io/hive-relay-pro/";
 
-/* COOKIE */
-function saveToken(token){
-    document.cookie="twitch_token="+token+"; path=/; max-age=31536000";
-}
-function getToken(){
-    const c=document.cookie.split("; ");
-    for(const x of c){
-        if(x.startsWith("twitch_token=")) return x.split("=")[1];
-    }
-    return null;
-}
+let appState={};
+
+/* CREATE UI */
+const container=document.getElementById("apps");
+
+CLIENT_IDS.forEach((id,index)=>{
+
+    appState[id]={
+        token:null,
+        client:null,
+        channels:[],
+        chatEnabled:false,
+        viewEnabled:false,
+        autoJoin:false
+    };
+
+    container.innerHTML+=`
+    <div class="app" id="app_${id}">
+        <h3>App ${index+1}</h3>
+        <div>Status: <span id="status_${id}">🔴 Not Logged In</span></div>
+        <button onclick="login('${id}')">Login</button>
+        <button id="chat_${id}" class="off" onclick="toggleChat('${id}')">Chat OFF</button>
+        <button id="view_${id}" class="off" onclick="toggleView('${id}')">View OFF</button>
+        <button id="auto_${id}" class="off" onclick="toggleAuto('${id}')">Auto Join OFF</button>
+
+        <div class="stream" id="stream_${id}"></div>
+        <div class="chat" id="chatlog_${id}">Chat disabled.</div>
+
+        <input id="input_${id}" placeholder="Message">
+        <button onclick="sendMsg('${id}')">SEND</button>
+    </div>
+    `;
+});
 
 /* LOGIN */
-document.getElementById("loginBtn").onclick=()=>{
+function login(clientId){
+
     const url=
+    "https://id.twitch.tv/oauth2/authorize"+
+    "?response_type=token"+
+    "&client_id="+clientId+
+    "&redirect_uri="+encodeURIComponent(REDIRECT)+
+    "&scope="+encodeURIComponent("chat:read chat:edit user:read:follows")+
+    "&force_verify=true"+
+    "&state="+clientId;
+
+    window.location.href=url;
+}
+
+/* CHECK AUTH */
+function checkAuth(){
+
+    const hash=new URLSearchParams(location.hash.substring(1));
+    const token=hash.get("access_token");
+    const state=hash.get("state");
+
+    if(token && state){
+        localStorage.setItem("twitch_token_"+state,token);
+        window.location.hash="";
+    }
+
+    CLIENT_IDS.forEach(id=>{
+        const stored=localStorage.getItem("twitch_token_"+id);
+        if(stored){
+            appState[id].token=stored;
+            document.getElementById("status_"+id).innerText="🟢 Logged In";
+        }
+    });
+}
+
+/* TOGGLES */
+function toggleChat(id){
+    const state=appState[id];
+    state.chatEnabled=!state.chatEnabled;
+    const btn=document.getElementById("chat_"+id);
+
+    if(state.chatEnabled){
+        btn.classList.remove("off");
+        btn.innerText="Chat ON";
+        initChat(id);
+    }else{
+        btn.classList.add("off");
+        btn.innerText="Chat OFF";
+        if(state.client) state.client.disconnect();
+        document.getElementById("chatlog_"+id).innerHTML="Chat disabled.";
+    }
+}
+
+function toggleView(id){
+    const state=appState[id];
+    state.viewEnabled=!state.viewEnabled;
+    const btn=document.getElementById("view_"+id);
+
+    if(state.viewEnabled){
+        btn.classList.remove("off");
+        btn.innerText="View ON";
+        if(state.channels.length>0){
+            loadStream(id,state.channels[0]);
+        }
+    }else{
+        btn.classList.add("off");
+        btn.innerText="View OFF";
+        document.getElementById("stream_"+id).innerHTML="";
+    }
+}
+
+function toggleAuto(id){
+    const state=appState[id];
+    state.autoJoin=!state.autoJoin;
+    const btn=document.getElementById("auto_"+id);
+
+    if(state.autoJoin){
+        btn.classList.remove("off");
+        btn.innerText="Auto Join ON";
+    }else{
+        btn.classList.add("off");
+        btn.innerText="Auto Join OFF";
+    }
+}
+
+/* INIT CHAT */
+async function initChat(id){
+
+    const state=appState[id];
+    if(!state.token) return alert("Login first");
+
+    const userRes=await fetch("https://api.twitch.tv/helix/users",{
+        headers:{
+            "Client-ID":id,
+            "Authorization":"Bearer "+state.token
+        }
+    });
+
+    const userData=await userRes.json();
+    const username=userData.data[0].login;
+
+    state.channels=[username];
+
+    const client=new tmi.Client({
+        connection:{secure:true,reconnect:true},
+        identity:{
+            username:username,
+            password:"oauth:"+state.token
+        },
+        channels:state.channels
+    });
+
+    await client.connect();
+
+    client.on("message",(channel,tags,msg)=>{
+        const log=document.getElementById("chatlog_"+id);
+        const div=document.createElement("div");
+        div.innerHTML="<b>"+tags["display-name"]+":</b> "+msg;
+        log.appendChild(div);
+        log.scrollTop=log.scrollHeight;
+    });
+
+    state.client=client;
+
+    if(state.viewEnabled){
+        loadStream(id,state.channels[0]);
+    }
+}
+
+/* STREAM */
+function loadStream(id,channel){
+    document.getElementById("stream_"+id).innerHTML=
+    `<iframe
+        src="https://player.twitch.tv/?channel=${channel}&parent=lilalien45.github.io"
+        height="100%"
+        width="100%"
+        frameborder="0"
+        allowfullscreen>
+    </iframe>`;
+}
+
+/* SEND */
+function sendMsg(id){
+    const state=appState[id];
+    const input=document.getElementById("input_"+id);
+    if(!input.value || !state.client) return;
+
+    state.channels.forEach(c=>{
+        state.client.say(c,input.value);
+    });
+
+    input.value="";
+}
+
+checkAuth();
+
+</script>
+</body>
+</html>    const url=
     "https://id.twitch.tv/oauth2/authorize"+
     "?response_type=token"+
     "&client_id="+CONFIG.clientId+
