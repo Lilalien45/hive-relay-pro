@@ -12,6 +12,14 @@
 
 <style>
 
+/* Disable text selection */
+*{
+user-select:none;
+-webkit-user-select:none;
+-moz-user-select:none;
+-ms-user-select:none;
+}
+
 body{
 margin:0;
 overflow:hidden;
@@ -80,7 +88,7 @@ width:200px;
 #controls button{
 padding:14px 18px;
 font-size:18px;
-transition:0.15s ease;
+transition:0.1s ease;
 }
 
 #controls button:active{
@@ -138,27 +146,55 @@ height:40vh;
 <input type="range" id="timelineSlider" min="0" max="100" value="0">
 </div>
 
-<!-- CAMERA CONTROLS -->
+<!-- CONTROLS -->
 
 <div id="controls" class="panel">
 
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:160px;">
 
-<button onmousedown="startMove('up')" onmouseup="stopMove()">⬆</button>
+<button 
+onmousedown="startHold('up')" 
+onmouseup="stopHold('up')" 
+ontouchstart="startHold('up')" 
+ontouchend="stopHold('up')">⬆</button>
 
-<button onmousedown="startMove('left')" onmouseup="stopMove()">⬅</button>
+<button 
+onmousedown="startHold('left')" 
+onmouseup="stopHold('left')" 
+ontouchstart="startHold('left')" 
+ontouchend="stopHold('left')">⬅</button>
+
 <button style="visibility:hidden"></button>
-<button onmousedown="startMove('right')" onmouseup="stopMove()">➡</button>
 
-<button style="grid-column:2" onmousedown="startMove('down')" onmouseup="stopMove()">⬇</button>
+<button 
+onmousedown="startHold('right')" 
+onmouseup="stopHold('right')" 
+ontouchstart="startHold('right')" 
+ontouchend="stopHold('right')">➡</button>
+
+<button 
+style="grid-column:2"
+onmousedown="startHold('down')" 
+onmouseup="stopHold('down')" 
+ontouchstart="startHold('down')" 
+ontouchend="stopHold('down')">⬇</button>
 
 </div>
 
 <br>
 
 <div style="display:flex;flex-direction:column;gap:8px;">
-<button onclick="zoomCam('in')">Zoom In +</button>
-<button onclick="zoomCam('out')">Zoom Out −</button>
+<button 
+onmousedown="startHold('zoomIn')" 
+onmouseup="stopHold('zoomIn')"
+ontouchstart="startHold('zoomIn')"
+ontouchend="stopHold('zoomIn')">Zoom In +</button>
+
+<button 
+onmousedown="startHold('zoomOut')" 
+onmouseup="stopHold('zoomOut')"
+ontouchstart="startHold('zoomOut')"
+ontouchend="stopHold('zoomOut')">Zoom Out −</button>
 </div>
 
 </div>
@@ -172,17 +208,48 @@ height:40vh;
 let scene,camera,renderer,xmlDoc=null;
 let camTarget=new THREE.Vector3();
 let instanceMap=new Map();
-let networkMode="private";
 let animationTime=0;
 
-/* CAMERA MOVE STATE */
+/* HOLD BUTTON SYSTEM */
 
-let moveState={
-up:false,
-down:false,
-left:false,
-right:false
-};
+let holdTimers=new Map();
+let holdIntervals=new Map();
+
+function startHold(action){
+
+if(holdTimers.has(action)) return;
+
+holdTimers.set(action,setTimeout(()=>{
+
+holdIntervals.set(action,setInterval(()=>{
+
+if(action==="up") moveCam("up");
+if(action==="down") moveCam("down");
+if(action==="left") moveCam("left");
+if(action==="right") moveCam("right");
+
+if(action==="zoomIn") zoomCam("in");
+if(action==="zoomOut") zoomCam("out");
+
+},50));
+
+},500));
+
+}
+
+function stopHold(action){
+
+if(holdTimers.has(action)){
+clearTimeout(holdTimers.get(action));
+holdTimers.delete(action);
+}
+
+if(holdIntervals.has(action)){
+clearInterval(holdIntervals.get(action));
+holdIntervals.delete(action);
+}
+
+}
 
 /* INIT ENGINE */
 
@@ -193,9 +260,7 @@ scene=new THREE.Scene();
 let w=window.innerWidth;
 let h=window.innerHeight;
 
-camera=new THREE.PerspectiveCamera(
-75,w/h,0.1,50000
-);
+camera=new THREE.PerspectiveCamera(75,w/h,0.1,50000);
 
 renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(w,h);
@@ -210,7 +275,7 @@ animate();
 
 }
 
-/* CAMERA CONTROLS (SMOOTH + HOLD SUPPORT) */
+/* CAMERA CONTROLS */
 
 function initControls(){
 
@@ -240,53 +305,33 @@ camera.position.z+=e.deltaY*0.1;
 
 }
 
-/* SMOOTH HOLD MOVEMENT */
+/* BUTTON MOVEMENT */
 
-function startMove(dir){
-
-if(dir.includes("⬆")) moveState.up=true;
-if(dir.includes("⬇")) moveState.down=true;
-if(dir.includes("⬅")) moveState.left=true;
-if(dir.includes("➡")) moveState.right=true;
-
-}
-
-function stopMove(){
-
-moveState.up=false;
-moveState.down=false;
-moveState.left=false;
-moveState.right=false;
-
-}
-
-function smoothCameraUpdate(){
+function moveCam(dir){
 
 let speed=2.5;
 
-if(moveState.up) camera.position.y+=speed;
-if(moveState.down) camera.position.y-=speed;
-if(moveState.left) camera.position.x-=speed;
-if(moveState.right) camera.position.x+=speed;
-
-requestAnimationFrame(smoothCameraUpdate);
+if(dir==="up") camera.position.y+=speed;
+if(dir==="down") camera.position.y-=speed;
+if(dir==="left") camera.position.x-=speed;
+if(dir==="right") camera.position.x+=speed;
 
 }
 
-/* ZOOM CONTROL (SMOOTH + NO FLIP) */
+/* ZOOM (SAFE LIMITS > 0.5) */
 
 function zoomCam(type){
 
-let zoomStep=20;
-let minZoom=200;
+let step=20;
+let minZoom=0.5;
 let maxZoom=8000;
 
 if(type==="in"){
-camera.position.z=Math.max(minZoom,camera.position.z-zoomStep);
+camera.position.z=Math.max(minZoom,camera.position.z-step);
 }
 
 if(type==="out"){
-camera.position.z=Math.min(maxZoom,camera.position.z+zoomStep);
+camera.position.z=Math.min(maxZoom,camera.position.z+step);
 }
 
 }
@@ -303,13 +348,6 @@ updateAnimations();
 camera.lookAt(camTarget);
 renderer.render(scene,camera);
 
-}
-
-/* SESSION MODE */
-
-function setMode(mode){
-networkMode=mode;
-alert("Session Mode: "+mode);
 }
 
 /* FILE LOAD */
@@ -407,7 +445,7 @@ z:parseFloat(a[2])||1
 };
 }
 
-/* RENDER INSTANCES */
+/* RENDER */
 
 function renderInstance(node,parent){
 
@@ -505,7 +543,7 @@ center.z+dist
 
 }
 
-/* ANIMATION */
+/* ANIMATIONS */
 
 function updateAnimations(){
 
@@ -532,7 +570,6 @@ renderer.setSize(window.innerWidth,window.innerHeight);
 /* START */
 
 initEngine();
-smoothCameraUpdate();
 
 </script>
 
