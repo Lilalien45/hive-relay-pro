@@ -1,170 +1,61 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-
-<title>Roblox Next Level Web Studio Viewer</title>
-
-<script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-<script>eruda.init();</script>
-
-<style>
-
-body{
-margin:0;
-overflow:hidden;
-background:#0f1117;
-color:white;
-font-family:Arial;
-}
-
-#ui{
-position:absolute;
-width:100%;
-height:100%;
-pointer-events:none;
-}
-
-.panel{
-background:#000a;
-padding:10px;
-border-radius:8px;
-pointer-events:auto;
-}
-
-#menu{
-position:absolute;
-top:10px;
-left:50%;
-transform:translateX(-50%);
-}
-
-#explorer{
-position:absolute;
-left:10px;
-top:70px;
-width:230px;
-height:420px;
-overflow:auto;
-}
-
-#properties{
-position:absolute;
-right:10px;
-top:70px;
-width:260px;
-max-height:320px;
-overflow:auto;
-}
-
-button{
-background:#222;
-color:white;
-border:none;
-padding:6px 12px;
-margin:4px;
-border-radius:6px;
-cursor:pointer;
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div id="ui">
-
-<div id="menu" class="panel">
-<input type="file" id="placeLoader">
-</div>
-
-<div id="explorer" class="panel">
-<h3>Explorer</h3>
-<div id="explorerTree"></div>
-</div>
-
-<div id="properties" class="panel">
-<h3>Properties</h3>
-<div id="propertiesData"></div>
-</div>
-
-</div>
-
 <script>
 
-/* CORE */
+/* ================= CORE STATE ================= */
 
 let scene,camera,renderer,xmlDoc=null;
 let camTarget=new THREE.Vector3();
 let instanceMap=new Map();
-
-/* NETWORK CAMERA SIM */
-
 let remoteCameras=[];
-let networkMode="private";
+let time=0;
 
-/* PHYSICS STYLE CAMERA */
-
-let camAngleX=0;
-let camAngleY=0;
-
-/* INIT */
+/* ================= INIT ENGINE ================= */
 
 function initEngine(){
 
 scene=new THREE.Scene();
 
+/* FAST LIGHTING */
+scene.add(new THREE.AmbientLight(0xffffff,0.9));
+
 camera=new THREE.PerspectiveCamera(
 75,
 window.innerWidth/window.innerHeight,
-0.1,
+0.5,
 50000
 );
 
 renderer=new THREE.WebGLRenderer({
-antialias:true,
-alpha:true
+antialias:false,
+powerPreference:"high-performance"
 });
 
 renderer.setSize(window.innerWidth,window.innerHeight);
-
 document.body.appendChild(renderer.domElement);
 
-/* Lighting */
-
-scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
-
-/* Grid */
-
-let grid=new THREE.GridHelper(3000,300);
-grid.material.opacity=0.3;
+/* FAST GRID */
+let grid=new THREE.GridHelper(2000,100);
+grid.material.opacity=0.2;
 grid.material.transparent=true;
 scene.add(grid);
 
-/* Fake multiplayer cameras */
-
 spawnRemoteCameras();
-
-/* Controls */
-
 initControls();
 
 animate();
 
 }
 
-/* MULTIPLAYER CAMERA VISUALIZATION */
+/* ================= MULTIPLAYER CAMERA VISUALS ================= */
 
 function spawnRemoteCameras(){
 
-for(let i=0;i<4;i++){
+for(let i=0;i<3;i++){
 
 let cam=new THREE.Mesh(
-new THREE.ConeGeometry(15,35,8),
-new THREE.MeshBasicMaterial({wireframe:true})
+new THREE.ConeGeometry(15,30,8),
+new THREE.MeshBasicMaterial({
+wireframe:true
+})
 );
 
 cam.position.set(
@@ -180,7 +71,7 @@ scene.add(cam);
 
 }
 
-/* ORBIT PHYSICS CAMERA */
+/* ================= CONTROLS ================= */
 
 function initControls(){
 
@@ -198,22 +89,22 @@ window.addEventListener("pointerup",()=>dragging=false);
 window.addEventListener("pointermove",e=>{
 if(!dragging)return;
 
-camAngleX+=(e.clientX-lx)*0.005;
-camAngleY+=(e.clientY-ly)*0.005;
+/* Smooth orbit physics */
+camTarget.x+=(e.clientX-lx)*0.05;
+camTarget.y-=(e.clientY-ly)*0.05;
 
 lx=e.clientX;
 ly=e.clientY;
+
 });
 
 window.addEventListener("wheel",e=>{
-camera.position.z+=e.deltaY*0.5;
+camera.position.z+=e.deltaY*0.4;
 });
 
 }
 
-/* LOOP */
-
-let time=0;
+/* ================= MAIN LOOP ================= */
 
 function animate(){
 
@@ -229,21 +120,21 @@ renderer.render(scene,camera);
 
 }
 
-/* CAMERA ORBIT */
+/* ================= ORBIT CAMERA ================= */
 
 function updateCameraOrbit(){
 
 let radius=600;
 
-camera.position.x=camTarget.x+Math.cos(camAngleX)*radius;
-camera.position.z=camTarget.z+Math.sin(camAngleX)*radius;
-camera.position.y=camTarget.y+Math.sin(camAngleY)*radius;
+camera.position.x=camTarget.x+Math.cos(time)*radius;
+camera.position.z=camTarget.z+Math.sin(time)*radius;
+camera.position.y=camTarget.y+Math.sin(time*0.5)*radius;
 
 camera.lookAt(camTarget);
 
 }
 
-/* REMOTE CAMERA VISUALS */
+/* ================= MULTIPLAYER VISUAL ================= */
 
 function updateRemoteCameras(){
 
@@ -263,7 +154,7 @@ c.visible=i<2;
 
 }
 
-/* FILE LOAD */
+/* ================= FILE LOADER ================= */
 
 placeLoader.addEventListener("change",e=>{
 
@@ -280,7 +171,7 @@ r.readAsText(f);
 
 });
 
-/* PARSER */
+/* ================= PARSER ================= */
 
 function parseRobloxXML(text){
 
@@ -291,7 +182,7 @@ buildScene();
 
 }
 
-/* EXPLORER */
+/* ================= EXPLORER ================= */
 
 function buildExplorer(){
 
@@ -331,7 +222,7 @@ return div;
 
 }
 
-/* PROPERTIES */
+/* ================= PROPERTIES ================= */
 
 function showProperties(node){
 
@@ -350,7 +241,7 @@ panel.innerHTML=html;
 
 }
 
-/* RENDER INSTANCES */
+/* ================= RENDER INSTANCES ================= */
 
 function parseVector3(s){
 let a=s.split(",");
@@ -366,12 +257,14 @@ function renderInstance(node,parent){
 let cls=node.getAttribute("class");
 let obj=null;
 
+/* PARTS */
+
 if(cls.includes("Part")){
 
 let size=node.querySelector("Properties > Vector3[name='Size']");
 let s=size?parseVector3(size.textContent):{x:1,y:1,z:1};
 
-let mat=new THREE.MeshStandardMaterial({
+let mat=new THREE.MeshBasicMaterial({
 color:Math.random()*0xffffff
 });
 
@@ -382,34 +275,25 @@ mat
 
 }
 
-else if(cls.includes("MeshPart")){
-
-let mat=new THREE.MeshStandardMaterial({
-color:Math.random()*0xffffff
-});
-
-obj=new THREE.Mesh(
-new THREE.SphereGeometry(20,32,32),
-mat
-);
-
-}
+/* GUI */
 
 else if(cls.includes("Gui")){
 
 obj=new THREE.Group();
 
-let guiPlane=new THREE.Mesh(
-new THREE.PlaneGeometry(8,4),
+let plane=new THREE.Mesh(
+new THREE.PlaneGeometry(5,3),
 new THREE.MeshBasicMaterial({
 color:0xffffff,
 side:THREE.DoubleSide
 })
 );
 
-obj.add(guiPlane);
+obj.add(plane);
 
 }
+
+/* CONTAINERS */
 
 else if(cls==="Model"||cls==="Folder"){
 obj=new THREE.Group();
@@ -431,16 +315,16 @@ renderInstance(c,obj);
 
 }
 
-/* SCENE BUILD */
+/* ================= SCENE BUILD ================= */
 
 function buildScene(){
 
 scene.clear();
 
-scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
+scene.add(new THREE.AmbientLight(0xffffff,0.9));
 
-let grid=new THREE.GridHelper(3000,300);
-grid.material.opacity=0.3;
+let grid=new THREE.GridHelper(2000,100);
+grid.material.opacity=0.2;
 grid.material.transparent=true;
 
 scene.add(grid);
@@ -455,7 +339,7 @@ autoFrameCamera();
 
 }
 
-/* CAMERA FRAME */
+/* ================= CAMERA FRAME ================= */
 
 function autoFrameCamera(){
 
@@ -466,14 +350,14 @@ let size=box.getSize(new THREE.Vector3());
 camTarget.copy(center);
 
 camera.position.set(
-center.x+size.x*3+300,
-center.y+size.y*2+300,
-center.z+size.z*3+300
+center.x+size.x*2+200,
+center.y+size.y*2+200,
+center.z+size.z*2+200
 );
 
 }
 
-/* ANIMATIONS */
+/* ================= ANIMATIONS ================= */
 
 function updateAnimations(){
 
@@ -482,7 +366,7 @@ instanceMap.forEach((obj,node)=>{
 let anim=node.querySelector("Properties > string[name='AnimationId']");
 
 if(anim){
-obj.rotation.y=Math.sin(time)*1.5;
+obj.rotation.y=Math.sin(time);
 }
 
 });
@@ -494,6 +378,3 @@ obj.rotation.y=Math.sin(time)*1.5;
 initEngine();
 
 </script>
-
-</body>
-</html>
