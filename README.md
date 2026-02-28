@@ -10,4 +10,6 @@ https://lilalien45.github.io/hive-relay-pro/69e6rxc96eyecitsx.html
 
 https://lilalien45.github.io/hive-relay-pro/Roblox-editor.html
 
+https://lilalien45.github.io/hive-relay-pro/Roblox-editor-V2.html
+
 There will be more soon or probably later
