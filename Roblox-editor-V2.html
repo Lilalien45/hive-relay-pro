@@ -1,87 +1,93 @@
 <script>
 
-/* ================= CORE STATE ================= */
+/* ENGINE STATE */
 
 let scene,camera,renderer,xmlDoc=null;
 let camTarget=new THREE.Vector3();
 let instanceMap=new Map();
-let remoteCameras=[];
-let time=0;
+let networkMode="private";
+let animationTime=0;
 
-/* ================= INIT ENGINE ================= */
+/* CAMERA PHYSICS */
+
+let dragging=false;
+let camYaw=0;
+let camPitch=0;
+
+/* GRID TEXTURE FLOOR */
+
+function createGridFloor(){
+
+const tex=new THREE.TextureLoader().load(
+"https://i.imgur.com/4k9Q9Vf.png"
+);
+
+tex.wrapS=THREE.RepeatWrapping;
+tex.wrapT=THREE.RepeatWrapping;
+tex.repeat.set(200,200);
+
+let mat=new THREE.MeshBasicMaterial({
+map:tex,
+transparent:true,
+opacity:0.85,
+side:THREE.DoubleSide
+});
+
+let floor=new THREE.Mesh(
+new THREE.PlaneGeometry(5000,5000),
+mat
+);
+
+floor.rotation.x=-Math.PI/2;
+floor.position.y=-10;
+
+scene.add(floor);
+
+}
+
+/* INIT ENGINE */
 
 function initEngine(){
 
 scene=new THREE.Scene();
 
-/* FAST LIGHTING */
-scene.add(new THREE.AmbientLight(0xffffff,0.9));
+let w=window.innerWidth;
+let h=window.innerHeight;
 
-camera=new THREE.PerspectiveCamera(
-75,
-window.innerWidth/window.innerHeight,
-0.5,
-50000
-);
-
+/* Faster performance renderer */
 renderer=new THREE.WebGLRenderer({
 antialias:false,
 powerPreference:"high-performance"
 });
 
-renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setSize(w,h);
 document.body.appendChild(renderer.domElement);
 
-/* FAST GRID */
-let grid=new THREE.GridHelper(2000,100);
-grid.material.opacity=0.2;
-grid.material.transparent=true;
-scene.add(grid);
+/* Lighting */
+scene.add(new THREE.AmbientLight(0xffffff,0.9));
 
-spawnRemoteCameras();
+camera=new THREE.PerspectiveCamera(
+75,w/h,0.1,50000
+);
+
+/* Grid floor instead of line grid */
+createGridFloor();
+
 initControls();
-
 animate();
 
 }
 
-/* ================= MULTIPLAYER CAMERA VISUALS ================= */
-
-function spawnRemoteCameras(){
-
-for(let i=0;i<3;i++){
-
-let cam=new THREE.Mesh(
-new THREE.ConeGeometry(15,30,8),
-new THREE.MeshBasicMaterial({
-wireframe:true
-})
-);
-
-cam.position.set(
-Math.random()*300-150,
-50,
-Math.random()*300-150
-);
-
-remoteCameras.push(cam);
-scene.add(cam);
-
-}
-
-}
-
-/* ================= CONTROLS ================= */
+/* CAMERA CONTROLS (SMOOTH ORBIT) */
 
 function initControls(){
 
-let dragging=false;
-let lx=0,ly=0;
+let lastX=0,lastY=0;
 
 window.addEventListener("pointerdown",e=>{
 dragging=true;
-lx=e.clientX;
-ly=e.clientY;
+lastX=e.clientX;
+lastY=e.clientY;
 });
 
 window.addEventListener("pointerup",()=>dragging=false);
@@ -89,13 +95,13 @@ window.addEventListener("pointerup",()=>dragging=false);
 window.addEventListener("pointermove",e=>{
 if(!dragging)return;
 
-/* Smooth orbit physics */
-camTarget.x+=(e.clientX-lx)*0.05;
-camTarget.y-=(e.clientY-ly)*0.05;
+camYaw+=(e.clientX-lastX)*0.005;
+camPitch+=(e.clientY-lastY)*0.005;
 
-lx=e.clientX;
-ly=e.clientY;
+camPitch=Math.max(-1.4,Math.min(1.4,camPitch));
 
+lastX=e.clientX;
+lastY=e.clientY;
 });
 
 window.addEventListener("wheel",e=>{
@@ -104,74 +110,62 @@ camera.position.z+=e.deltaY*0.4;
 
 }
 
-/* ================= MAIN LOOP ================= */
+/* MAIN LOOP */
 
 function animate(){
 
 requestAnimationFrame(animate);
 
-time+=0.01;
+animationTime+=0.01;
 
 updateAnimations();
-updateRemoteCameras();
 updateCameraOrbit();
 
 renderer.render(scene,camera);
 
 }
 
-/* ================= ORBIT CAMERA ================= */
+/* CAMERA ORBIT PHYSICS */
 
 function updateCameraOrbit(){
 
 let radius=600;
 
-camera.position.x=camTarget.x+Math.cos(time)*radius;
-camera.position.z=camTarget.z+Math.sin(time)*radius;
-camera.position.y=camTarget.y+Math.sin(time*0.5)*radius;
+camera.position.x=
+camTarget.x+Math.cos(camYaw)*radius;
+
+camera.position.z=
+camTarget.z+Math.sin(camYaw)*radius;
+
+camera.position.y=
+camTarget.y+Math.sin(camPitch)*radius;
 
 camera.lookAt(camTarget);
 
 }
 
-/* ================= MULTIPLAYER VISUAL ================= */
+/* SESSION MODE */
 
-function updateRemoteCameras(){
-
-remoteCameras.forEach((c,i)=>{
-
-c.rotation.y+=0.01;
-
-if(networkMode==="host"){
-c.visible=true;
-}else if(networkMode==="private"){
-c.visible=false;
-}else{
-c.visible=i<2;
+function setMode(mode){
+networkMode=mode;
+alert("Session Mode: "+mode);
 }
 
-});
-
-}
-
-/* ================= FILE LOADER ================= */
+/* FILE LOAD */
 
 placeLoader.addEventListener("change",e=>{
-
 let f=e.target.files[0];
 if(!f)return;
 
 let r=new FileReader();
-
 r.onload=()=>{
 parseRobloxXML(r.result);
 };
-
 r.readAsText(f);
 
 });
 
-/* ================= PARSER ================= */
+/* PARSER */
 
 function parseRobloxXML(text){
 
@@ -182,7 +176,7 @@ buildScene();
 
 }
 
-/* ================= EXPLORER ================= */
+/* EXPLORER */
 
 function buildExplorer(){
 
@@ -200,7 +194,7 @@ tree.appendChild(buildExplorerNode(n));
 function buildExplorerNode(node){
 
 let div=document.createElement("div");
-div.style.marginLeft="10px";
+div.style.marginLeft="12px";
 
 let name=node.querySelector("Properties > string[name='Name']");
 let label=name?name.textContent:node.getAttribute("class");
@@ -222,7 +216,7 @@ return div;
 
 }
 
-/* ================= PROPERTIES ================= */
+/* PROPERTIES */
 
 function showProperties(node){
 
@@ -241,7 +235,7 @@ panel.innerHTML=html;
 
 }
 
-/* ================= RENDER INSTANCES ================= */
+/* VECTOR PARSER */
 
 function parseVector3(s){
 let a=s.split(",");
@@ -252,19 +246,19 @@ z:parseFloat(a[2])||1
 };
 }
 
+/* INSTANCE RENDER */
+
 function renderInstance(node,parent){
 
 let cls=node.getAttribute("class");
 let obj=null;
-
-/* PARTS */
 
 if(cls.includes("Part")){
 
 let size=node.querySelector("Properties > Vector3[name='Size']");
 let s=size?parseVector3(size.textContent):{x:1,y:1,z:1};
 
-let mat=new THREE.MeshBasicMaterial({
+let mat=new THREE.MeshStandardMaterial({
 color:Math.random()*0xffffff
 });
 
@@ -274,8 +268,6 @@ mat
 );
 
 }
-
-/* GUI */
 
 else if(cls.includes("Gui")){
 
@@ -292,8 +284,6 @@ side:THREE.DoubleSide
 obj.add(plane);
 
 }
-
-/* CONTAINERS */
 
 else if(cls==="Model"||cls==="Folder"){
 obj=new THREE.Group();
@@ -315,19 +305,16 @@ renderInstance(c,obj);
 
 }
 
-/* ================= SCENE BUILD ================= */
+/* BUILD SCENE */
 
 function buildScene(){
 
 scene.clear();
 
+/* Re-add lighting */
 scene.add(new THREE.AmbientLight(0xffffff,0.9));
 
-let grid=new THREE.GridHelper(2000,100);
-grid.material.opacity=0.2;
-grid.material.transparent=true;
-
-scene.add(grid);
+createGridFloor();
 
 xmlDoc.documentElement.childNodes.forEach(n=>{
 if(n.nodeName==="Item"){
@@ -339,7 +326,7 @@ autoFrameCamera();
 
 }
 
-/* ================= CAMERA FRAME ================= */
+/* CAMERA FRAME */
 
 function autoFrameCamera(){
 
@@ -349,15 +336,17 @@ let size=box.getSize(new THREE.Vector3());
 
 camTarget.copy(center);
 
+let dist=Math.max(size.x,size.y,size.z)*2+300;
+
 camera.position.set(
-center.x+size.x*2+200,
-center.y+size.y*2+200,
-center.z+size.z*2+200
+center.x+dist,
+center.y+dist,
+center.z+dist
 );
 
 }
 
-/* ================= ANIMATIONS ================= */
+/* ANIMATION SIM */
 
 function updateAnimations(){
 
@@ -366,7 +355,7 @@ instanceMap.forEach((obj,node)=>{
 let anim=node.querySelector("Properties > string[name='AnimationId']");
 
 if(anim){
-obj.rotation.y=Math.sin(time);
+obj.rotation.y=Math.sin(animationTime)*1.2;
 }
 
 });
