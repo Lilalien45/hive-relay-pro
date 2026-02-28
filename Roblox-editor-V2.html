@@ -18,7 +18,6 @@ overflow:hidden;
 background:#0f1117;
 color:white;
 font-family:Arial;
-touch-action:none;
 }
 
 #ui{
@@ -75,7 +74,12 @@ width:min(420px,90vw);
 position:absolute;
 bottom:10px;
 left:10px;
-width:180px;
+width:200px;
+}
+
+#controls button{
+padding:12px 16px;
+font-size:18px;
 }
 
 button{
@@ -98,11 +102,6 @@ height:50vh;
 #properties{
 width:45vw;
 height:40vh;
-}
-
-button{
-padding:10px;
-font-size:14px;
 }
 
 }
@@ -137,26 +136,28 @@ font-size:14px;
 <input type="range" id="timelineSlider" min="0" max="100" value="0">
 </div>
 
-<!-- CAMERA CONTROLS + ZOOM -->
+<!-- CAMERA CONTROLS -->
 
 <div id="controls" class="panel">
 
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:140px;">
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:160px;">
 
-<button style="grid-column:2" onmousedown="moveCam('up')" ontouchstart="moveCam('up')">↑</button>
+<button style="grid-column:2" onclick="moveCam('up')">⬆</button>
 
-<button onmousedown="moveCam('left')" ontouchstart="moveCam('left')">←</button>
+<button onclick="moveCam('left')">⬅</button>
 <button style="visibility:hidden"></button>
-<button onmousedown="moveCam('right')" ontouchstart="moveCam('right')">→</button>
+<button onclick="moveCam('right')">➡</button>
 
-<button style="grid-column:2" onmousedown="moveCam('down')" ontouchstart="moveCam('down')">↓</button>
+<button style="grid-column:2" onclick="moveCam('down')">⬇</button>
 
 </div>
 
 <br>
 
-<label>Zoom</label>
-<input type="range" id="zoomBar" min="100" max="5000" value="1500">
+<div style="display:flex;flex-direction:column;gap:8px;">
+<button onclick="zoomCam('in')">Zoom In +</button>
+<button onclick="zoomCam('out')">Zoom Out −</button>
+</div>
 
 </div>
 
@@ -198,39 +199,29 @@ animate();
 
 }
 
-/* CAMERA CONTROLS */
+/* CAMERA CONTROLS (MOUSE ONLY) */
 
 function initControls(){
 
 let rot=false,lx=0,ly=0;
 
-function pointerDown(e){
+window.addEventListener("pointerdown",e=>{
 rot=true;
-lx=e.clientX||e.touches?.[0].clientX;
-ly=e.clientY||e.touches?.[0].clientY;
-}
-
-function pointerMove(e){
-if(!rot)return;
-
-let x=e.clientX||e.touches?.[0].clientX;
-let y=e.clientY||e.touches?.[0].clientY;
-
-camera.position.x+=(x-lx)*0.05;
-camera.position.y-=(y-ly)*0.05;
-
-lx=x;
-ly=y;
-}
-
-window.addEventListener("pointerdown",pointerDown);
-window.addEventListener("touchstart",pointerDown);
+lx=e.clientX;
+ly=e.clientY;
+});
 
 window.addEventListener("pointerup",()=>rot=false);
-window.addEventListener("touchend",()=>rot=false);
 
-window.addEventListener("pointermove",pointerMove);
-window.addEventListener("touchmove",pointerMove,{passive:false});
+window.addEventListener("pointermove",e=>{
+if(!rot)return;
+
+camera.position.x+=(e.clientX-lx)*0.05;
+camera.position.y-=(e.clientY-ly)*0.05;
+
+lx=e.clientX;
+ly=e.clientY;
+});
 
 window.addEventListener("wheel",e=>{
 camera.position.z+=e.deltaY*0.5;
@@ -238,30 +229,29 @@ camera.position.z+=e.deltaY*0.5;
 
 }
 
-/* CAMERA BUTTON MOVEMENT */
+/* CAMERA MOVE BUTTONS */
 
 function moveCam(dir){
 
 let speed=40;
 
-switch(dir){
-
-case "up": camera.position.y+=speed; break;
-case "down": camera.position.y-=speed; break;
-case "left": camera.position.x-=speed; break;
-case "right": camera.position.x+=speed; break;
+if(dir==="up") camera.position.y+=speed;
+if(dir==="down") camera.position.y-=speed;
+if(dir==="left") camera.position.x-=speed;
+if(dir==="right") camera.position.x+=speed;
 
 }
 
+/* ZOOM BUTTONS */
+
+function zoomCam(type){
+
+let speed=150;
+
+if(type==="in") camera.position.z-=speed;
+if(type==="out") camera.position.z+=speed;
+
 }
-
-/* ZOOM BAR */
-
-let zoomBar=document.getElementById("zoomBar");
-
-zoomBar.addEventListener("input",()=>{
-camera.position.z=Number(zoomBar.value);
-});
 
 /* LOOP */
 
@@ -493,44 +483,13 @@ obj.rotation.y=Math.sin(animationTime)*1.5;
 
 }
 
-/* HUD SAFETY CHECK */
-
-function checkHUD(){
-
-document.querySelectorAll(".panel").forEach(p=>{
-
-let style=getComputedStyle(p);
-let opacity=parseFloat(style.opacity);
-let rect=p.getBoundingClientRect();
-
-let tooBig=
-rect.height>window.innerHeight*0.9 ||
-rect.width>window.innerWidth*0.9;
-
-if(opacity<0.1 && tooBig){
-p.dataset.hiddenHUD="true";
-p.style.display="none";
-}
-
-if(opacity>=0.1 && p.dataset.hiddenHUD){
-p.style.display="block";
-p.removeAttribute("data-hiddenHUD");
-}
-
-});
-
-}
-
 /* RESIZE */
 
 window.addEventListener("resize",()=>{
 camera.aspect=window.innerWidth/window.innerHeight;
 camera.updateProjectionMatrix();
 renderer.setSize(window.innerWidth,window.innerHeight);
-checkHUD();
 });
-
-setInterval(checkHUD,2000);
 
 /* START */
 
