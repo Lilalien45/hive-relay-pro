@@ -8,6 +8,6 @@ https://lilalien45.github.io/hive-relay-pro/twitch%20test%20.html
 
 https://lilalien45.github.io/hive-relay-pro/69e6rxc96eyecitsx.html
 
-https://lilalien45.github.io/hive-relay-pro/Roblox-editor
+https://lilalien45.github.io/hive-relay-pro/Roblox-editor.html
 
 There will be more soon or probably later
