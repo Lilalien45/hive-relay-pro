@@ -71,6 +71,13 @@ transform:translateX(-50%);
 width:min(420px,90vw);
 }
 
+#controls{
+position:absolute;
+bottom:10px;
+left:10px;
+width:180px;
+}
+
 button{
 background:#222;
 color:white;
@@ -130,6 +137,29 @@ font-size:14px;
 <input type="range" id="timelineSlider" min="0" max="100" value="0">
 </div>
 
+<!-- CAMERA CONTROLS + ZOOM -->
+
+<div id="controls" class="panel">
+
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:140px;">
+
+<button style="grid-column:2" onmousedown="moveCam('up')" ontouchstart="moveCam('up')">↑</button>
+
+<button onmousedown="moveCam('left')" ontouchstart="moveCam('left')">←</button>
+<button style="visibility:hidden"></button>
+<button onmousedown="moveCam('right')" ontouchstart="moveCam('right')">→</button>
+
+<button style="grid-column:2" onmousedown="moveCam('down')" ontouchstart="moveCam('down')">↓</button>
+
+</div>
+
+<br>
+
+<label>Zoom</label>
+<input type="range" id="zoomBar" min="100" max="5000" value="1500">
+
+</div>
+
 </div>
 
 <script>
@@ -168,7 +198,7 @@ animate();
 
 }
 
-/* CAMERA CONTROLS (MOBILE + DESKTOP) */
+/* CAMERA CONTROLS */
 
 function initControls(){
 
@@ -207,6 +237,31 @@ camera.position.z+=e.deltaY*0.5;
 });
 
 }
+
+/* CAMERA BUTTON MOVEMENT */
+
+function moveCam(dir){
+
+let speed=40;
+
+switch(dir){
+
+case "up": camera.position.y+=speed; break;
+case "down": camera.position.y-=speed; break;
+case "left": camera.position.x-=speed; break;
+case "right": camera.position.x+=speed; break;
+
+}
+
+}
+
+/* ZOOM BAR */
+
+let zoomBar=document.getElementById("zoomBar");
+
+zoomBar.addEventListener("input",()=>{
+camera.position.z=Number(zoomBar.value);
+});
 
 /* LOOP */
 
@@ -310,23 +365,6 @@ html+=p.getAttribute("name")+": "+p.textContent+"<br>";
 });
 
 panel.innerHTML=html;
-
-}
-
-/* ASSET LOADER */
-
-async function loadAsset(id,mat){
-
-return new Promise(res=>{
-new THREE.TextureLoader().load(
-`https://assetdelivery.roblox.com/v1/asset/?id=${id}`,
-t=>{
-mat.map=t;
-mat.needsUpdate=true;
-res();
-}
-);
-});
 
 }
 
@@ -501,4 +539,4 @@ initEngine();
 </script>
 
 </body>
-  </html>
+</html>
