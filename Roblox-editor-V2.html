@@ -1,115 +1,3 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-
-<title>Roblox Web Master Studio Viewer</title>
-
-<script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-
-<script>eruda.init();</script>
-
-<style>
-
-body{
-margin:0;
-overflow:hidden;
-background:#0f1117;
-color:white;
-font-family:Arial;
-}
-
-#ui{
-position:absolute;
-width:100%;
-height:100%;
-pointer-events:none;
-}
-
-.panel{
-background:#000a;
-padding:10px;
-border-radius:8px;
-pointer-events:auto;
-}
-
-#menu{
-position:absolute;
-top:10px;
-left:50%;
-transform:translateX(-50%);
-}
-
-#explorer{
-position:absolute;
-left:10px;
-top:70px;
-width:220px;
-height:420px;
-overflow:auto;
-}
-
-#properties{
-position:absolute;
-right:10px;
-top:70px;
-width:260px;
-max-height:320px;
-overflow:auto;
-}
-
-#timeline{
-position:absolute;
-bottom:10px;
-left:50%;
-transform:translateX(-50%);
-width:420px;
-}
-
-button{
-background:#222;
-color:white;
-border:none;
-padding:6px 12px;
-margin:4px;
-border-radius:6px;
-cursor:pointer;
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div id="ui">
-
-<div id="menu" class="panel">
-<button onclick="setMode('host')">Host</button>
-<button onclick="setMode('private')">Private</button>
-<button onclick="setMode('join')">Join</button>
-<button onclick="setMode('invite')">Invite Only</button>
-<input type="file" id="placeLoader">
-</div>
-
-<div id="explorer" class="panel">
-<h3>Explorer</h3>
-<div id="explorerTree"></div>
-</div>
-
-<div id="properties" class="panel">
-<h3>Properties</h3>
-<div id="propertiesData"></div>
-</div>
-
-<div id="timeline" class="panel">
-<input type="range" id="timelineSlider" min="0" max="100" value="0">
-</div>
-
-</div>
-
 <script>
 
 /* ENGINE STATE */
@@ -117,8 +5,18 @@ cursor:pointer;
 let scene,camera,renderer,xmlDoc=null;
 let camTarget=new THREE.Vector3();
 let instanceMap=new Map();
-let networkMode="private";
+
 let animationTime=0;
+
+/* CAMERA ORBIT STATE */
+
+let dragging=false;
+let lastX=0;
+let lastY=0;
+
+let camYaw=0;
+let camPitch=0;
+let pinchDist=0;
 
 /* INIT ENGINE */
 
@@ -133,43 +31,85 @@ camera=new THREE.PerspectiveCamera(
 75,w/h,0.1,50000
 );
 
-renderer=new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(w,h);
+/* Faster rendering settings */
+renderer=new THREE.WebGLRenderer({
+antialias:true,
+powerPreference:"high-performance"
+});
 
+renderer.setSize(w,h);
 document.body.appendChild(renderer.domElement);
 
+/* Lighting */
 scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
 scene.add(new THREE.GridHelper(2000,200));
 
 initControls();
-
 animate();
 
 }
 
-/* CAMERA CONTROLS */
+/* CAMERA CONTROLS (PC + MOBILE ORBIT) */
 
 function initControls(){
 
-let rot=false,lx=0,ly=0;
+/* POINTER ROTATION */
 
 window.addEventListener("pointerdown",e=>{
-rot=true;
-lx=e.clientX;
-ly=e.clientY;
+dragging=true;
+lastX=e.clientX;
+lastY=e.clientY;
 });
 
-window.addEventListener("pointerup",()=>rot=false);
+window.addEventListener("pointerup",()=>{
+dragging=false;
+pinchDist=0;
+});
 
 window.addEventListener("pointermove",e=>{
-if(!rot)return;
 
-camera.position.x+=(e.clientX-lx)*0.05;
-camera.position.y-=(e.clientY-ly)*0.05;
+if(!dragging)return;
 
-lx=e.clientX;
-ly=e.clientY;
+if(e.pointerType==="mouse" || e.touches?.length===1){
+
+camYaw += (e.clientX-lastX)*0.005;
+camPitch += (e.clientY-lastY)*0.005;
+
+camPitch=Math.max(-1.4,Math.min(1.4,camPitch));
+
+lastX=e.clientX;
+lastY=e.clientY;
+
+}
+
 });
+
+/* MOBILE PINCH ZOOM */
+
+window.addEventListener("touchmove",e=>{
+
+if(e.touches.length===2){
+
+let t1=e.touches[0];
+let t2=e.touches[1];
+
+let dx=t1.clientX-t2.clientX;
+let dy=t1.clientY-t2.clientY;
+
+let dist=Math.sqrt(dx*dx+dy*dy);
+
+if(pinchDist!==0){
+let delta=dist-pinchDist;
+camera.position.z+=delta*0.3;
+}
+
+pinchDist=dist;
+
+}
+
+});
+
+/* PC ZOOM */
 
 window.addEventListener("wheel",e=>{
 camera.position.z+=e.deltaY*0.5;
@@ -184,17 +124,35 @@ function animate(){
 requestAnimationFrame(animate);
 
 animationTime+=0.01;
+
 updateAnimations();
+updateCameraOrbit();
 
 camera.lookAt(camTarget);
 renderer.render(scene,camera);
 
 }
 
+/* ORBIT CAMERA PHYSICS */
+
+function updateCameraOrbit(){
+
+let radius=600;
+
+camera.position.x=
+camTarget.x+Math.cos(camYaw)*radius;
+
+camera.position.z=
+camTarget.z+Math.sin(camYaw)*radius;
+
+camera.position.y=
+camTarget.y+Math.sin(camPitch)*radius;
+
+}
+
 /* SESSION MODE */
 
 function setMode(mode){
-networkMode=mode;
 alert("Session Mode: "+mode);
 }
 
@@ -282,24 +240,7 @@ panel.innerHTML=html;
 
 }
 
-/* ASSET LOADER */
-
-async function loadAsset(id,mat){
-
-return new Promise(res=>{
-new THREE.TextureLoader().load(
-`https://assetdelivery.roblox.com/v1/asset/?id=${id}`,
-t=>{
-mat.map=t;
-mat.needsUpdate=true;
-res();
-}
-);
-});
-
-}
-
-/* RENDER */
+/* VECTOR PARSER */
 
 function parseVector3(s){
 let a=s.split(",");
@@ -310,17 +251,16 @@ z:parseFloat(a[2])||1
 };
 }
 
+/* INSTANCE RENDER */
+
 function renderInstance(node,parent){
 
 let cls=node.getAttribute("class");
 let obj=null;
 
-/* PARTS + MESH */
-
 if(cls.includes("Part")){
 
 let size=node.querySelector("Properties > Vector3[name='Size']");
-
 let s=size?parseVector3(size.textContent):{x:1,y:1,z:1};
 
 let mat=new THREE.MeshStandardMaterial({
@@ -333,8 +273,6 @@ mat
 );
 
 }
-
-/* GUI RENDER */
 
 else if(cls.includes("Gui")){
 
@@ -351,8 +289,6 @@ side:THREE.DoubleSide
 obj.add(plane);
 
 }
-
-/* CONTAINERS */
 
 else if(cls==="Model"||cls==="Folder"){
 obj=new THREE.Group();
@@ -401,9 +337,9 @@ let box=new THREE.Box3().setFromObject(scene);
 let center=box.getCenter(new THREE.Vector3());
 let size=box.getSize(new THREE.Vector3());
 
-let dist=Math.max(size.x,size.y,size.z)*3+300;
-
 camTarget.copy(center);
+
+let dist=Math.max(size.x,size.y,size.z)*2+300;
 
 camera.position.set(
 center.x+dist,
@@ -433,7 +369,4 @@ obj.rotation.y=Math.sin(animationTime)*1.5;
 
 initEngine();
 
-</script>
-
-</body>
-</html>
+  </script>
