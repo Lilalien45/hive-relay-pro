@@ -4,11 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
 
-<title>Roblox Web Master Studio Viewer</title>
+<title>Roblox Next Level Web Studio Viewer</title>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-
 <script>eruda.init();</script>
 
 <style>
@@ -46,7 +45,7 @@ transform:translateX(-50%);
 position:absolute;
 left:10px;
 top:70px;
-width:220px;
+width:230px;
 height:420px;
 overflow:auto;
 }
@@ -58,14 +57,6 @@ top:70px;
 width:260px;
 max-height:320px;
 overflow:auto;
-}
-
-#timeline{
-position:absolute;
-bottom:10px;
-left:50%;
-transform:translateX(-50%);
-width:420px;
 }
 
 button{
@@ -87,10 +78,6 @@ cursor:pointer;
 <div id="ui">
 
 <div id="menu" class="panel">
-<button onclick="setMode('host')">Host</button>
-<button onclick="setMode('private')">Private</button>
-<button onclick="setMode('join')">Join</button>
-<button onclick="setMode('invite')">Invite Only</button>
 <input type="file" id="placeLoader">
 </div>
 
@@ -104,42 +91,64 @@ cursor:pointer;
 <div id="propertiesData"></div>
 </div>
 
-<div id="timeline" class="panel">
-<input type="range" id="timelineSlider" min="0" max="100" value="0">
-</div>
-
 </div>
 
 <script>
 
-/* ENGINE STATE */
+/* CORE */
 
 let scene,camera,renderer,xmlDoc=null;
 let camTarget=new THREE.Vector3();
 let instanceMap=new Map();
-let networkMode="private";
-let animationTime=0;
 
-/* INIT ENGINE */
+/* NETWORK CAMERA SIM */
+
+let remoteCameras=[];
+let networkMode="private";
+
+/* PHYSICS STYLE CAMERA */
+
+let camAngleX=0;
+let camAngleY=0;
+
+/* INIT */
 
 function initEngine(){
 
 scene=new THREE.Scene();
 
-let w=window.innerWidth;
-let h=window.innerHeight;
-
 camera=new THREE.PerspectiveCamera(
-75,w/h,0.1,50000
+75,
+window.innerWidth/window.innerHeight,
+0.1,
+50000
 );
 
-renderer=new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(w,h);
+renderer=new THREE.WebGLRenderer({
+antialias:true,
+alpha:true
+});
+
+renderer.setSize(window.innerWidth,window.innerHeight);
 
 document.body.appendChild(renderer.domElement);
 
+/* Lighting */
+
 scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
-scene.add(new THREE.GridHelper(2000,200));
+
+/* Grid */
+
+let grid=new THREE.GridHelper(3000,300);
+grid.material.opacity=0.3;
+grid.material.transparent=true;
+scene.add(grid);
+
+/* Fake multiplayer cameras */
+
+spawnRemoteCameras();
+
+/* Controls */
 
 initControls();
 
@@ -147,25 +156,50 @@ animate();
 
 }
 
-/* CAMERA CONTROLS */
+/* MULTIPLAYER CAMERA VISUALIZATION */
+
+function spawnRemoteCameras(){
+
+for(let i=0;i<4;i++){
+
+let cam=new THREE.Mesh(
+new THREE.ConeGeometry(15,35,8),
+new THREE.MeshBasicMaterial({wireframe:true})
+);
+
+cam.position.set(
+Math.random()*300-150,
+50,
+Math.random()*300-150
+);
+
+remoteCameras.push(cam);
+scene.add(cam);
+
+}
+
+}
+
+/* ORBIT PHYSICS CAMERA */
 
 function initControls(){
 
-let rot=false,lx=0,ly=0;
+let dragging=false;
+let lx=0,ly=0;
 
 window.addEventListener("pointerdown",e=>{
-rot=true;
+dragging=true;
 lx=e.clientX;
 ly=e.clientY;
 });
 
-window.addEventListener("pointerup",()=>rot=false);
+window.addEventListener("pointerup",()=>dragging=false);
 
 window.addEventListener("pointermove",e=>{
-if(!rot)return;
+if(!dragging)return;
 
-camera.position.x+=(e.clientX-lx)*0.05;
-camera.position.y-=(e.clientY-ly)*0.05;
+camAngleX+=(e.clientX-lx)*0.005;
+camAngleY+=(e.clientY-ly)*0.005;
 
 lx=e.clientX;
 ly=e.clientY;
@@ -179,35 +213,69 @@ camera.position.z+=e.deltaY*0.5;
 
 /* LOOP */
 
+let time=0;
+
 function animate(){
 
 requestAnimationFrame(animate);
 
-animationTime+=0.01;
-updateAnimations();
+time+=0.01;
 
-camera.lookAt(camTarget);
+updateAnimations();
+updateRemoteCameras();
+updateCameraOrbit();
+
 renderer.render(scene,camera);
 
 }
 
-/* SESSION MODE */
+/* CAMERA ORBIT */
 
-function setMode(mode){
-networkMode=mode;
-alert("Session Mode: "+mode);
+function updateCameraOrbit(){
+
+let radius=600;
+
+camera.position.x=camTarget.x+Math.cos(camAngleX)*radius;
+camera.position.z=camTarget.z+Math.sin(camAngleX)*radius;
+camera.position.y=camTarget.y+Math.sin(camAngleY)*radius;
+
+camera.lookAt(camTarget);
+
+}
+
+/* REMOTE CAMERA VISUALS */
+
+function updateRemoteCameras(){
+
+remoteCameras.forEach((c,i)=>{
+
+c.rotation.y+=0.01;
+
+if(networkMode==="host"){
+c.visible=true;
+}else if(networkMode==="private"){
+c.visible=false;
+}else{
+c.visible=i<2;
+}
+
+});
+
 }
 
 /* FILE LOAD */
 
 placeLoader.addEventListener("change",e=>{
+
 let f=e.target.files[0];
 if(!f)return;
 
 let r=new FileReader();
+
 r.onload=()=>{
 parseRobloxXML(r.result);
 };
+
 r.readAsText(f);
 
 });
@@ -241,7 +309,7 @@ tree.appendChild(buildExplorerNode(n));
 function buildExplorerNode(node){
 
 let div=document.createElement("div");
-div.style.marginLeft="12px";
+div.style.marginLeft="10px";
 
 let name=node.querySelector("Properties > string[name='Name']");
 let label=name?name.textContent:node.getAttribute("class");
@@ -263,7 +331,7 @@ return div;
 
 }
 
-/* PROPERTY VIEW */
+/* PROPERTIES */
 
 function showProperties(node){
 
@@ -282,24 +350,7 @@ panel.innerHTML=html;
 
 }
 
-/* ASSET LOADER */
-
-async function loadAsset(id,mat){
-
-return new Promise(res=>{
-new THREE.TextureLoader().load(
-`https://assetdelivery.roblox.com/v1/asset/?id=${id}`,
-t=>{
-mat.map=t;
-mat.needsUpdate=true;
-res();
-}
-);
-});
-
-}
-
-/* RENDER */
+/* RENDER INSTANCES */
 
 function parseVector3(s){
 let a=s.split(",");
@@ -315,12 +366,9 @@ function renderInstance(node,parent){
 let cls=node.getAttribute("class");
 let obj=null;
 
-/* PARTS + MESH */
-
 if(cls.includes("Part")){
 
 let size=node.querySelector("Properties > Vector3[name='Size']");
-
 let s=size?parseVector3(size.textContent):{x:1,y:1,z:1};
 
 let mat=new THREE.MeshStandardMaterial({
@@ -334,25 +382,34 @@ mat
 
 }
 
-/* GUI RENDER */
+else if(cls.includes("MeshPart")){
+
+let mat=new THREE.MeshStandardMaterial({
+color:Math.random()*0xffffff
+});
+
+obj=new THREE.Mesh(
+new THREE.SphereGeometry(20,32,32),
+mat
+);
+
+}
 
 else if(cls.includes("Gui")){
 
 obj=new THREE.Group();
 
-let plane=new THREE.Mesh(
-new THREE.PlaneGeometry(5,3),
+let guiPlane=new THREE.Mesh(
+new THREE.PlaneGeometry(8,4),
 new THREE.MeshBasicMaterial({
 color:0xffffff,
 side:THREE.DoubleSide
 })
 );
 
-obj.add(plane);
+obj.add(guiPlane);
 
 }
-
-/* CONTAINERS */
 
 else if(cls==="Model"||cls==="Folder"){
 obj=new THREE.Group();
@@ -374,14 +431,19 @@ renderInstance(c,obj);
 
 }
 
-/* BUILD SCENE */
+/* SCENE BUILD */
 
 function buildScene(){
 
 scene.clear();
 
 scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
-scene.add(new THREE.GridHelper(2000,200));
+
+let grid=new THREE.GridHelper(3000,300);
+grid.material.opacity=0.3;
+grid.material.transparent=true;
+
+scene.add(grid);
 
 xmlDoc.documentElement.childNodes.forEach(n=>{
 if(n.nodeName==="Item"){
@@ -401,19 +463,17 @@ let box=new THREE.Box3().setFromObject(scene);
 let center=box.getCenter(new THREE.Vector3());
 let size=box.getSize(new THREE.Vector3());
 
-let dist=Math.max(size.x,size.y,size.z)*3+300;
-
 camTarget.copy(center);
 
 camera.position.set(
-center.x+dist,
-center.y+dist,
-center.z+dist
+center.x+size.x*3+300,
+center.y+size.y*2+300,
+center.z+size.z*3+300
 );
 
 }
 
-/* ANIMATION SIM */
+/* ANIMATIONS */
 
 function updateAnimations(){
 
@@ -422,7 +482,7 @@ instanceMap.forEach((obj,node)=>{
 let anim=node.querySelector("Properties > string[name='AnimationId']");
 
 if(anim){
-obj.rotation.y=Math.sin(animationTime)*1.5;
+obj.rotation.y=Math.sin(time)*1.5;
 }
 
 });
