@@ -1,3 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+
+<title>Roblox Web Master Studio Viewer</title>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+<script>eruda.init();</script>
+
+<style>
+
+body{
+margin:0;
+overflow:hidden;
+background:#0f1117;
+color:white;
+font-family:Arial;
+touch-action:none;
+}
+
+#ui{
+position:absolute;
+width:100%;
+height:100%;
+pointer-events:none;
+}
+
+.panel{
+background:#000a;
+padding:10px;
+border-radius:8px;
+pointer-events:auto;
+max-width:90vw;
+max-height:80vh;
+overflow:auto;
+}
+
+#menu{
+position:absolute;
+top:10px;
+left:50%;
+transform:translateX(-50%);
+}
+
+#explorer{
+position:absolute;
+left:10px;
+top:70px;
+width:220px;
+height:420px;
+overflow:auto;
+}
+
+#properties{
+position:absolute;
+right:10px;
+top:70px;
+width:260px;
+max-height:320px;
+overflow:auto;
+}
+
+#timeline{
+position:absolute;
+bottom:10px;
+left:50%;
+transform:translateX(-50%);
+width:min(420px,90vw);
+}
+
+button{
+background:#222;
+color:white;
+border:none;
+padding:6px 12px;
+margin:4px;
+border-radius:6px;
+cursor:pointer;
+}
+
+@media(max-width:600px){
+
+#explorer{
+width:45vw;
+height:50vh;
+}
+
+#properties{
+width:45vw;
+height:40vh;
+}
+
+button{
+padding:10px;
+font-size:14px;
+}
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="ui">
+
+<div id="menu" class="panel">
+<button onclick="setMode('host')">Host</button>
+<button onclick="setMode('private')">Private</button>
+<button onclick="setMode('join')">Join</button>
+<button onclick="setMode('invite')">Invite Only</button>
+<input type="file" id="placeLoader">
+</div>
+
+<div id="explorer" class="panel">
+<h3>Explorer</h3>
+<div id="explorerTree"></div>
+</div>
+
+<div id="properties" class="panel">
+<h3>Properties</h3>
+<div id="propertiesData"></div>
+</div>
+
+<div id="timeline" class="panel">
+<input type="range" id="timelineSlider" min="0" max="100" value="0">
+</div>
+
+</div>
+
 <script>
 
 /* ENGINE STATE */
@@ -5,18 +139,8 @@
 let scene,camera,renderer,xmlDoc=null;
 let camTarget=new THREE.Vector3();
 let instanceMap=new Map();
-
+let networkMode="private";
 let animationTime=0;
-
-/* CAMERA ORBIT STATE */
-
-let dragging=false;
-let lastX=0;
-let lastY=0;
-
-let camYaw=0;
-let camPitch=0;
-let pinchDist=0;
 
 /* INIT ENGINE */
 
@@ -31,16 +155,11 @@ camera=new THREE.PerspectiveCamera(
 75,w/h,0.1,50000
 );
 
-/* Faster rendering settings */
-renderer=new THREE.WebGLRenderer({
-antialias:true,
-powerPreference:"high-performance"
-});
-
+renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(w,h);
+
 document.body.appendChild(renderer.domElement);
 
-/* Lighting */
 scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
 scene.add(new THREE.GridHelper(2000,200));
 
@@ -49,67 +168,39 @@ animate();
 
 }
 
-/* CAMERA CONTROLS (PC + MOBILE ORBIT) */
+/* CAMERA CONTROLS (MOBILE + DESKTOP) */
 
 function initControls(){
 
-/* POINTER ROTATION */
+let rot=false,lx=0,ly=0;
 
-window.addEventListener("pointerdown",e=>{
-dragging=true;
-lastX=e.clientX;
-lastY=e.clientY;
-});
-
-window.addEventListener("pointerup",()=>{
-dragging=false;
-pinchDist=0;
-});
-
-window.addEventListener("pointermove",e=>{
-
-if(!dragging)return;
-
-if(e.pointerType==="mouse" || e.touches?.length===1){
-
-camYaw += (e.clientX-lastX)*0.005;
-camPitch += (e.clientY-lastY)*0.005;
-
-camPitch=Math.max(-1.4,Math.min(1.4,camPitch));
-
-lastX=e.clientX;
-lastY=e.clientY;
-
+function pointerDown(e){
+rot=true;
+lx=e.clientX||e.touches?.[0].clientX;
+ly=e.clientY||e.touches?.[0].clientY;
 }
 
-});
+function pointerMove(e){
+if(!rot)return;
 
-/* MOBILE PINCH ZOOM */
+let x=e.clientX||e.touches?.[0].clientX;
+let y=e.clientY||e.touches?.[0].clientY;
 
-window.addEventListener("touchmove",e=>{
+camera.position.x+=(x-lx)*0.05;
+camera.position.y-=(y-ly)*0.05;
 
-if(e.touches.length===2){
-
-let t1=e.touches[0];
-let t2=e.touches[1];
-
-let dx=t1.clientX-t2.clientX;
-let dy=t1.clientY-t2.clientY;
-
-let dist=Math.sqrt(dx*dx+dy*dy);
-
-if(pinchDist!==0){
-let delta=dist-pinchDist;
-camera.position.z+=delta*0.3;
+lx=x;
+ly=y;
 }
 
-pinchDist=dist;
+window.addEventListener("pointerdown",pointerDown);
+window.addEventListener("touchstart",pointerDown);
 
-}
+window.addEventListener("pointerup",()=>rot=false);
+window.addEventListener("touchend",()=>rot=false);
 
-});
-
-/* PC ZOOM */
+window.addEventListener("pointermove",pointerMove);
+window.addEventListener("touchmove",pointerMove,{passive:false});
 
 window.addEventListener("wheel",e=>{
 camera.position.z+=e.deltaY*0.5;
@@ -124,35 +215,17 @@ function animate(){
 requestAnimationFrame(animate);
 
 animationTime+=0.01;
-
 updateAnimations();
-updateCameraOrbit();
 
 camera.lookAt(camTarget);
 renderer.render(scene,camera);
 
 }
 
-/* ORBIT CAMERA PHYSICS */
-
-function updateCameraOrbit(){
-
-let radius=600;
-
-camera.position.x=
-camTarget.x+Math.cos(camYaw)*radius;
-
-camera.position.z=
-camTarget.z+Math.sin(camYaw)*radius;
-
-camera.position.y=
-camTarget.y+Math.sin(camPitch)*radius;
-
-}
-
 /* SESSION MODE */
 
 function setMode(mode){
+networkMode=mode;
 alert("Session Mode: "+mode);
 }
 
@@ -240,7 +313,24 @@ panel.innerHTML=html;
 
 }
 
-/* VECTOR PARSER */
+/* ASSET LOADER */
+
+async function loadAsset(id,mat){
+
+return new Promise(res=>{
+new THREE.TextureLoader().load(
+`https://assetdelivery.roblox.com/v1/asset/?id=${id}`,
+t=>{
+mat.map=t;
+mat.needsUpdate=true;
+res();
+}
+);
+});
+
+}
+
+/* UTIL */
 
 function parseVector3(s){
 let a=s.split(",");
@@ -251,14 +341,14 @@ z:parseFloat(a[2])||1
 };
 }
 
-/* INSTANCE RENDER */
+/* RENDER INSTANCES */
 
 function renderInstance(node,parent){
 
 let cls=node.getAttribute("class");
 let obj=null;
 
-if(cls.includes("Part")){
+if(cls && cls.includes("Part")){
 
 let size=node.querySelector("Properties > Vector3[name='Size']");
 let s=size?parseVector3(size.textContent):{x:1,y:1,z:1};
@@ -274,7 +364,7 @@ mat
 
 }
 
-else if(cls.includes("Gui")){
+else if(cls && cls.includes("Gui")){
 
 obj=new THREE.Group();
 
@@ -337,9 +427,9 @@ let box=new THREE.Box3().setFromObject(scene);
 let center=box.getCenter(new THREE.Vector3());
 let size=box.getSize(new THREE.Vector3());
 
-camTarget.copy(center);
+let dist=Math.max(size.x,size.y,size.z)*3+300;
 
-let dist=Math.max(size.x,size.y,size.z)*2+300;
+camTarget.copy(center);
 
 camera.position.set(
 center.x+dist,
@@ -349,7 +439,7 @@ center.z+dist
 
 }
 
-/* ANIMATION SIM */
+/* ANIMATIONS */
 
 function updateAnimations(){
 
@@ -365,8 +455,50 @@ obj.rotation.y=Math.sin(animationTime)*1.5;
 
 }
 
+/* HUD SAFETY CHECK */
+
+function checkHUD(){
+
+document.querySelectorAll(".panel").forEach(p=>{
+
+let style=getComputedStyle(p);
+let opacity=parseFloat(style.opacity);
+let rect=p.getBoundingClientRect();
+
+let tooBig=
+rect.height>window.innerHeight*0.9 ||
+rect.width>window.innerWidth*0.9;
+
+if(opacity<0.1 && tooBig){
+p.dataset.hiddenHUD="true";
+p.style.display="none";
+}
+
+if(opacity>=0.1 && p.dataset.hiddenHUD){
+p.style.display="block";
+p.removeAttribute("data-hiddenHUD");
+}
+
+});
+
+}
+
+/* RESIZE */
+
+window.addEventListener("resize",()=>{
+camera.aspect=window.innerWidth/window.innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(window.innerWidth,window.innerHeight);
+checkHUD();
+});
+
+setInterval(checkHUD,2000);
+
 /* START */
 
 initEngine();
 
 </script>
+
+</body>
+  </html>
