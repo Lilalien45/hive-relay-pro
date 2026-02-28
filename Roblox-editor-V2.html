@@ -1,1 +1,439 @@
-<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"><title>Roblox Web Pro Combined</title><script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script><script src="https://cdn.jsdelivr.net/npm/eruda"></script><script>eruda.init();let scene,camera,renderer,xmlDoc=null,instanceMap=new Map(),camTarget=new THREE.Vector3();function log(t){console.log(t);eruda?.log?.(t);let c=document.getElementById("consolePanel");if(c){c.innerHTML+="<br>> "+t;c.scrollTop=c.scrollHeight}}function initEngine(){let vp=document.getElementById("viewport");scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(75,vp.clientWidth/vp.clientHeight,.1,20000);renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(vp.clientWidth,vp.clientHeight);vp.appendChild(renderer.domElement);scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));scene.add(new THREE.DirectionalLight(0xffffff,1));scene.add(new THREE.GridHelper(1000,200));initControls(vp);animate()}function initControls(vp){let rot=false,lx=0,ly=0;vp.addEventListener("pointerdown",e=>{rot=true;lx=e.clientX;ly=e.clientY});vp.addEventListener("pointerup",()=>rot=false);vp.addEventListener("pointermove",e=>{if(!rot)return;let dx=e.clientX-lx,dy=e.clientY-ly,s=.01;camera.position.x+=dx*s;camera.position.y-=dy*s;lx=e.clientX;ly=e.clientY});vp.addEventListener("wheel",e=>{e.preventDefault();camera.position.z+=e.deltaY*.05},{passive:false});vp.oncontextmenu=e=>e.preventDefault()}function animate(){requestAnimationFrame(animate);camera.lookAt(camTarget);renderer.render(scene,camera)}function parseVector3(s){let a=s.split(",");return{x:parseFloat(a[0])||1,y:parseFloat(a[1])||1,z:parseFloat(a[2])||1}}function parseColor3(s){let a=s.split(",");return new THREE.Color(parseFloat(a[0]),parseFloat(a[1]),parseFloat(a[2]))}function parseCFrame(s){let n=s.split(",");return{pos:{x:parseFloat(n[0])||0,y:parseFloat(n[1])||0,z:parseFloat(n[2])||0},rot:{x:parseFloat(n[3])||0,y:parseFloat(n[4])||0,z:parseFloat(n[5])||0}}}async function loadTexture(id,mat){return new Promise(res=>{new THREE.TextureLoader().load(`https://assetdelivery.roblox.com/v1/asset/?id=${id}`,t=>{mat.map=t;mat.needsUpdate=true;res()})})}function buildExplorer(){let tree=document.getElementById("explorerTree");tree.innerHTML="";xmlDoc.documentElement.childNodes.forEach(n=>{if(n.nodeName==="Item")tree.appendChild(buildExplorerNode(n))})}function buildExplorerNode(node){let div=document.createElement("div");div.style.marginLeft="12px";let name=node.querySelector("Properties > string[name='Name']");let label=name?name.textContent:node.getAttribute("class");let btn=document.createElement("button");btn.style.width="100%";btn.textContent=label;btn.onclick=()=>showData(node);div.appendChild(btn);node.childNodes.forEach(c=>{if(c.nodeName==="Item")div.appendChild(buildExplorerNode(c))});return div}function showData(node){let info=document.getElementById("infoPanel");let scriptPanel=document.getElementById("scriptPanel");let props="";node.querySelectorAll("Properties > *").forEach(p=>props+=p.getAttribute("name")+": "+p.textContent+"<br>");info.innerHTML="<b>"+(node.querySelector(\"Properties > string[name='Name']\")?.textContent||node.getAttribute(\"class\"))+"</b><br>"+props;let scriptText="";node.querySelectorAll("Item").forEach(child=>{if(child.getAttribute(\"class\")===\"Script\"){let src=child.querySelector(\"Properties > string[name='Source']\");if(src)scriptText+=src.textContent+\"\\n\\n\"}});scriptPanel.textContent=scriptText||\"No Script Source\"}async function renderInstance(node,parent){let cls=node.getAttribute(\"class\");let obj=null;if(cls===\"Part\"){let size=node.querySelector(\"Properties > Vector3[name='Size']\");let cf=node.querySelector(\"Properties > CoordinateFrame[name='CFrame']\");let color=node.querySelector(\"Properties > Color3[name='Color']\");let tex=node.querySelector(\"Properties > Content[name='TextureID']\");let s=size?parseVector3(size.textContent):{x:1,y:1,z:1};let mat=new THREE.MeshStandardMaterial({color:color?parseColor3(color.textContent):Math.random()*0xffffff});if(tex){let m=tex.textContent.match(/(\\d+)/);if(m)await loadTexture(m[1],mat)}obj=new THREE.Mesh(new THREE.BoxGeometry(s.x,s.y,s.z),mat);if(cf){let c=parseCFrame(cf.textContent);obj.position.set(c.pos.x,c.pos.y,c.pos.z);obj.rotation.set(c.rot.x,c.rot.y,c.rot.z)}}else if(cls===\"Model\"||cls===\"Folder\")obj=new THREE.Group();if(obj){instanceMap.set(node,obj);(parent?parent:scene).add(obj);node.childNodes.forEach(c=>{if(c.nodeName===\"Item\")renderInstance(c,obj)})}}function buildScene(){scene.clear();scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));scene.add(new THREE.GridHelper(1000,200));xmlDoc.documentElement.childNodes.forEach(n=>{if(n.nodeName===\"Item\")renderInstance(n,null)});autoFrameCamera()}function autoFrameCamera(){let box=new THREE.Box3().setFromObject(scene);let center=box.getCenter(new THREE.Vector3());let size=box.getSize(new THREE.Vector3());let dist=Math.max(size.x,size.y,size.z)*3+50;camTarget.copy(center);camera.position.set(center.x+dist,center.y+dist,center.z+dist)}document.addEventListener("DOMContentLoaded",()=>{initEngine();document.getElementById("placeLoader").addEventListener("change",e=>{let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{xmlDoc=new DOMParser().parseFromString(r.result,\"text/xml\");buildExplorer();buildScene()};r.readAsText(f)})});</script></head><body><div id="layout"><div id="topbar"><input type="file" id="placeLoader"></div><div id="workspace"><div id="explorer" style="width:220px;background:#1c1f26;overflow:auto;padding:8px"><h3>Explorer</h3><div id="explorerTree"></div></div><div id="viewport" style="flex:1;position:relative;touch-action:none"><div id="consolePanel" style="position:absolute;top:10px;left:10px;background:#000a;padding:10px;border-radius:6px;width:300px;height:160px;overflow:auto;font-family:monospace;font-size:12px">Dev Console</div><div id="infoPanel" style="position:absolute;right:10px;bottom:10px;background:#000a;padding:10px;border-radius:6px;max-width:260px"></div><div id="scriptPanel" style="position:absolute;left:10px;bottom:10px;background:#000a;padding:10px;border-radius:6px;max-width:300px;white-space:pre-wrap"></div></div></div></div></body></html>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+
+<title>Roblox Web Master Studio Viewer</title>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+
+<script>eruda.init();</script>
+
+<style>
+
+body{
+margin:0;
+overflow:hidden;
+background:#0f1117;
+color:white;
+font-family:Arial;
+}
+
+#ui{
+position:absolute;
+width:100%;
+height:100%;
+pointer-events:none;
+}
+
+.panel{
+background:#000a;
+padding:10px;
+border-radius:8px;
+pointer-events:auto;
+}
+
+#menu{
+position:absolute;
+top:10px;
+left:50%;
+transform:translateX(-50%);
+}
+
+#explorer{
+position:absolute;
+left:10px;
+top:70px;
+width:220px;
+height:420px;
+overflow:auto;
+}
+
+#properties{
+position:absolute;
+right:10px;
+top:70px;
+width:260px;
+max-height:320px;
+overflow:auto;
+}
+
+#timeline{
+position:absolute;
+bottom:10px;
+left:50%;
+transform:translateX(-50%);
+width:420px;
+}
+
+button{
+background:#222;
+color:white;
+border:none;
+padding:6px 12px;
+margin:4px;
+border-radius:6px;
+cursor:pointer;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="ui">
+
+<div id="menu" class="panel">
+<button onclick="setMode('host')">Host</button>
+<button onclick="setMode('private')">Private</button>
+<button onclick="setMode('join')">Join</button>
+<button onclick="setMode('invite')">Invite Only</button>
+<input type="file" id="placeLoader">
+</div>
+
+<div id="explorer" class="panel">
+<h3>Explorer</h3>
+<div id="explorerTree"></div>
+</div>
+
+<div id="properties" class="panel">
+<h3>Properties</h3>
+<div id="propertiesData"></div>
+</div>
+
+<div id="timeline" class="panel">
+<input type="range" id="timelineSlider" min="0" max="100" value="0">
+</div>
+
+</div>
+
+<script>
+
+/* ENGINE STATE */
+
+let scene,camera,renderer,xmlDoc=null;
+let camTarget=new THREE.Vector3();
+let instanceMap=new Map();
+let networkMode="private";
+let animationTime=0;
+
+/* INIT ENGINE */
+
+function initEngine(){
+
+scene=new THREE.Scene();
+
+let w=window.innerWidth;
+let h=window.innerHeight;
+
+camera=new THREE.PerspectiveCamera(
+75,w/h,0.1,50000
+);
+
+renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(w,h);
+
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
+scene.add(new THREE.GridHelper(2000,200));
+
+initControls();
+
+animate();
+
+}
+
+/* CAMERA CONTROLS */
+
+function initControls(){
+
+let rot=false,lx=0,ly=0;
+
+window.addEventListener("pointerdown",e=>{
+rot=true;
+lx=e.clientX;
+ly=e.clientY;
+});
+
+window.addEventListener("pointerup",()=>rot=false);
+
+window.addEventListener("pointermove",e=>{
+if(!rot)return;
+
+camera.position.x+=(e.clientX-lx)*0.05;
+camera.position.y-=(e.clientY-ly)*0.05;
+
+lx=e.clientX;
+ly=e.clientY;
+});
+
+window.addEventListener("wheel",e=>{
+camera.position.z+=e.deltaY*0.5;
+});
+
+}
+
+/* LOOP */
+
+function animate(){
+
+requestAnimationFrame(animate);
+
+animationTime+=0.01;
+updateAnimations();
+
+camera.lookAt(camTarget);
+renderer.render(scene,camera);
+
+}
+
+/* SESSION MODE */
+
+function setMode(mode){
+networkMode=mode;
+alert("Session Mode: "+mode);
+}
+
+/* FILE LOAD */
+
+placeLoader.addEventListener("change",e=>{
+let f=e.target.files[0];
+if(!f)return;
+
+let r=new FileReader();
+r.onload=()=>{
+parseRobloxXML(r.result);
+};
+r.readAsText(f);
+
+});
+
+/* PARSER */
+
+function parseRobloxXML(text){
+
+xmlDoc=new DOMParser().parseFromString(text,"text/xml");
+
+buildExplorer();
+buildScene();
+
+}
+
+/* EXPLORER */
+
+function buildExplorer(){
+
+let tree=document.getElementById("explorerTree");
+tree.innerHTML="";
+
+xmlDoc.documentElement.childNodes.forEach(n=>{
+if(n.nodeName==="Item"){
+tree.appendChild(buildExplorerNode(n));
+}
+});
+
+}
+
+function buildExplorerNode(node){
+
+let div=document.createElement("div");
+div.style.marginLeft="12px";
+
+let name=node.querySelector("Properties > string[name='Name']");
+let label=name?name.textContent:node.getAttribute("class");
+
+let btn=document.createElement("button");
+btn.style.width="100%";
+btn.textContent=label;
+btn.onclick=()=>showProperties(node);
+
+div.appendChild(btn);
+
+node.childNodes.forEach(c=>{
+if(c.nodeName==="Item"){
+div.appendChild(buildExplorerNode(c));
+}
+});
+
+return div;
+
+}
+
+/* PROPERTY VIEW */
+
+function showProperties(node){
+
+let panel=document.getElementById("propertiesData");
+
+let html="<b>"+(
+node.querySelector("Properties > string[name='Name']")?.textContent
+||node.getAttribute("class")
+)+"</b><br>";
+
+node.querySelectorAll("Properties > *").forEach(p=>{
+html+=p.getAttribute("name")+": "+p.textContent+"<br>";
+});
+
+panel.innerHTML=html;
+
+}
+
+/* ASSET LOADER */
+
+async function loadAsset(id,mat){
+
+return new Promise(res=>{
+new THREE.TextureLoader().load(
+`https://assetdelivery.roblox.com/v1/asset/?id=${id}`,
+t=>{
+mat.map=t;
+mat.needsUpdate=true;
+res();
+}
+);
+});
+
+}
+
+/* RENDER */
+
+function parseVector3(s){
+let a=s.split(",");
+return{
+x:parseFloat(a[0])||1,
+y:parseFloat(a[1])||1,
+z:parseFloat(a[2])||1
+};
+}
+
+function renderInstance(node,parent){
+
+let cls=node.getAttribute("class");
+let obj=null;
+
+/* PARTS + MESH */
+
+if(cls.includes("Part")){
+
+let size=node.querySelector("Properties > Vector3[name='Size']");
+
+let s=size?parseVector3(size.textContent):{x:1,y:1,z:1};
+
+let mat=new THREE.MeshStandardMaterial({
+color:Math.random()*0xffffff
+});
+
+obj=new THREE.Mesh(
+new THREE.BoxGeometry(s.x,s.y,s.z),
+mat
+);
+
+}
+
+/* GUI RENDER */
+
+else if(cls.includes("Gui")){
+
+obj=new THREE.Group();
+
+let plane=new THREE.Mesh(
+new THREE.PlaneGeometry(5,3),
+new THREE.MeshBasicMaterial({
+color:0xffffff,
+side:THREE.DoubleSide
+})
+);
+
+obj.add(plane);
+
+}
+
+/* CONTAINERS */
+
+else if(cls==="Model"||cls==="Folder"){
+obj=new THREE.Group();
+}
+
+if(obj){
+
+instanceMap.set(node,obj);
+
+(parent?parent:scene).add(obj);
+
+node.childNodes.forEach(c=>{
+if(c.nodeName==="Item"){
+renderInstance(c,obj);
+}
+});
+
+}
+
+}
+
+/* BUILD SCENE */
+
+function buildScene(){
+
+scene.clear();
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
+scene.add(new THREE.GridHelper(2000,200));
+
+xmlDoc.documentElement.childNodes.forEach(n=>{
+if(n.nodeName==="Item"){
+renderInstance(n,null);
+}
+});
+
+autoFrameCamera();
+
+}
+
+/* CAMERA FRAME */
+
+function autoFrameCamera(){
+
+let box=new THREE.Box3().setFromObject(scene);
+let center=box.getCenter(new THREE.Vector3());
+let size=box.getSize(new THREE.Vector3());
+
+let dist=Math.max(size.x,size.y,size.z)*3+300;
+
+camTarget.copy(center);
+
+camera.position.set(
+center.x+dist,
+center.y+dist,
+center.z+dist
+);
+
+}
+
+/* ANIMATION SIM */
+
+function updateAnimations(){
+
+instanceMap.forEach((obj,node)=>{
+
+let anim=node.querySelector("Properties > string[name='AnimationId']");
+
+if(anim){
+obj.rotation.y=Math.sin(animationTime)*1.5;
+}
+
+});
+
+}
+
+/* START */
+
+initEngine();
+
+</script>
+
+</body>
+</html>
